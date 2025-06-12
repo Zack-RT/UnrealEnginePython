@@ -14,7 +14,7 @@ More tutorials: https://github.com/20tab/UnrealEnginePython/tree/master/tutorial
 
 The original author has stopped maintaining this repository, but my project has created many tools based on UEP, and I am constantly maintaining it..
 
-Due to limited energy, only the functions under Windows Editor were adapted, and many APIs were added on the basis of the original functions, focusing on obtaining various UOarget properties. Friends who are interested in this can continue to maintain it together.
+Due to limited energy, only the functions under Windows Editor were adapted, and many APIs were added on the basis of the original functions, focusing on obtaining various UObject properties and Editor function. Friends who are interested in this can continue to maintain it together.
 
 
 # Project Status (IMPORTANT)
