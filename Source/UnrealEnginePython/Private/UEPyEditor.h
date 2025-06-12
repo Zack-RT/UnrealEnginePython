@@ -13,12 +13,14 @@ PyObject *py_unreal_engine_editor_deselect_actors(PyObject *, PyObject *);
 PyObject *py_unreal_engine_editor_select_actor(PyObject *, PyObject *);
 PyObject *py_unreal_engine_import_asset(PyObject *, PyObject *);
 PyObject *py_unreal_engine_get_asset(PyObject *, PyObject *);
+PyObject* py_unreal_engine_is_package_exist(PyObject*, PyObject*);
 PyObject *py_unreal_engine_is_loading_assets(PyObject *, PyObject *);
 PyObject *py_unreal_engine_wait_for_assets(PyObject *, PyObject *);
 PyObject *py_unreal_engine_find_asset(PyObject *, PyObject *);
 PyObject *py_unreal_engine_create_asset(PyObject *, PyObject *);
 PyObject *py_unreal_engine_delete_object(PyObject *, PyObject *);
 PyObject *py_unreal_engine_get_assets(PyObject *, PyObject *);
+PyObject *py_unreal_engine_get_assets_by_package_name(PyObject *, PyObject *);
 PyObject *py_unreal_engine_get_selected_assets(PyObject *, PyObject *);
 PyObject *py_unreal_engine_get_assets_by_class(PyObject *, PyObject *);
 PyObject *py_unreal_engine_get_assets_by_filter(PyObject *, PyObject *, PyObject *);
@@ -59,6 +61,7 @@ PyObject *py_unreal_engine_blueprint_add_new_timeline(PyObject *, PyObject *);
 PyObject *py_unreal_engine_blueprint_set_variable_visibility(PyObject *, PyObject *);
 
 PyObject *py_unreal_engine_get_blueprint_components(PyObject *, PyObject *);
+PyObject* py_unreal_engine_get_blueprint_components_by_class(PyObject *, PyObject *);
 
 PyObject *py_unreal_engine_editor_play(PyObject *, PyObject *);
 PyObject *py_unreal_engine_editor_on_asset_post_import(PyObject *, PyObject *);

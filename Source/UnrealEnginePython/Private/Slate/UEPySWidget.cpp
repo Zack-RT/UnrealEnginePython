@@ -111,7 +111,7 @@ static PyObject *py_ue_swidget_set_enabled(ue_PySWidget *self, PyObject * args)
 	Py_RETURN_SLATE_SELF;
 }
 
-#if ENGINE_MINOR_VERSION > 12
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 12)
 static PyObject *py_ue_swidget_bind_on_mouse_button_down(ue_PySWidget *self, PyObject * args)
 {
 	PyObject *py_callable;
@@ -364,7 +364,7 @@ static PyMethodDef ue_PySWidget_methods[] = {
 	{ "invalidate", (PyCFunction)py_ue_swidget_invalidate, METH_VARARGS, "" },
 	{ "set_keyboard_focus", (PyCFunction)py_ue_swidget_set_keyboard_focus, METH_VARARGS, "" },
 	{ "set_visibility", (PyCFunction)py_ue_swidget_set_visibility, METH_VARARGS, "" },
-#if ENGINE_MINOR_VERSION > 12
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 12)
 	{ "bind_on_mouse_button_down", (PyCFunction)py_ue_swidget_bind_on_mouse_button_down, METH_VARARGS, "" },
 	{ "bind_on_mouse_button_up", (PyCFunction)py_ue_swidget_bind_on_mouse_button_down, METH_VARARGS, "" },
 	{ "bind_on_mouse_double_click", (PyCFunction)py_ue_swidget_bind_on_mouse_double_click, METH_VARARGS, "" },
@@ -380,7 +380,7 @@ static PyMethodDef ue_PySWidget_methods[] = {
 static void ue_PySWidget_dealloc(ue_PySWidget *self)
 {
 #if defined(UEPY_MEMORY_DEBUG)
-	UE_LOG(LogPython, Warning, TEXT("Destroying ue_PySWidget %p mapped to %s %p (slate refcount: %d)"), self, *self->s_widget->GetTypeAsString(), &self->s_widget.Get(), self->s_widget.GetSharedReferenceCount());
+	UE_LOG(LogPython, Warning, TEXT("Destroying ue_PySWidget %p mapped to %s %p (slate refcount: %d)"), self, *self->Widget->GetTypeAsString(), &self->Widget.Get(), self->Widget.GetSharedReferenceCount());
 #endif
 
 	if (self->weakreflist != nullptr)

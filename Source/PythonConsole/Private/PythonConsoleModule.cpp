@@ -6,7 +6,15 @@
 #include "Editor/WorkspaceMenuStructure/Public/WorkspaceMenuStructureModule.h"
 #include "Runtime/Slate/Public/Widgets/Docking/SDockTab.h"
 #include "Editor/WorkspaceMenuStructure/Public/WorkspaceMenuStructure.h"
+#include "LevelEditor.h"
+#include "Interfaces/IPluginManager.h"
+#include "HAL/FileManager.h"
+#include "EditorStyleSet.h"
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+#include "Styling/AppStyle.h"
+#endif
 
+#define LOCTEXT_NAMESPACE "PythonConsole"
 IMPLEMENT_MODULE( FPythonConsoleModule, PythonConsole );
 
 namespace PythonConsoleModule
@@ -60,32 +68,24 @@ static TSharedPtr<FPythonLogHistory> PythonLogHistory;
 TSharedRef<SDockTab> SpawnPythonLog( const FSpawnTabArgs& Args )
 {
 	return SNew(SDockTab)
-		.Icon(FEditorStyle::GetBrush("Log.TabIcon"))
-		.TabRole( ETabRole::NomadTab )
-		.Label( NSLOCTEXT("PythonConsole", "TabTitle", "Python Console") )
-		[
-			SNew(SPythonLog).Messages( PythonLogHistory->GetMessages() )
-		];
+	.Icon(FEditorStyle::GetBrush("Log.TabIcon"))
+	.TabRole( ETabRole::PanelTab )
+	.Label( NSLOCTEXT("PythonConsole", "TabTitle", "Python Console") )
+	[
+		SNew(SPythonLog).Messages( PythonLogHistory->GetMessages() )
+	];
 }
 
 void FPythonConsoleModule::StartupModule()
 {
-	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(PythonConsoleModule::PythonLogTabName, FOnSpawnTab::CreateStatic( &SpawnPythonLog ) )
-		.SetDisplayName(NSLOCTEXT("UnrealEditor", "PythonLogTab", "Python Console"))
-		.SetTooltipText(NSLOCTEXT("UnrealEditor", "PythonLogTooltipText", "Open the Python Console tab."))
-		.SetGroup( WorkspaceMenu::GetMenuStructure().GetDeveloperToolsLogCategory() )
-		.SetIcon( FSlateIcon(FEditorStyle::GetStyleSetName(), "Log.TabIcon") );
-
-	
 	PythonLogHistory = MakeShareable(new FPythonLogHistory);
+	FCoreDelegates::OnPostEngineInit.AddRaw(this, &FPythonConsoleModule::RegisterMenus);
 }
 
 void FPythonConsoleModule::ShutdownModule()
 {
-	if (FSlateApplication::IsInitialized())
-	{
-		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(PythonConsoleModule::PythonLogTabName);
-	}
+	PythonLogHistory.Reset();
+	UnRegisterMenus();
 }
 
 TSharedRef< SWidget > FPythonConsoleModule::MakeConsoleInputBox( TSharedPtr< SEditableTextBox >& OutExposedEditableTextBox ) const

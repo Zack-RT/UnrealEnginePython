@@ -163,6 +163,25 @@ void FPythonSmartHttpDelegate::OnRequestComplete(FHttpRequestPtr request, FHttpR
 	Py_DECREF(ret);
 }
 
+void FPythonSmartHttpDelegate::OnRequestProgress64(FHttpRequestPtr request, uint64 sent, uint64 received)
+{
+	FScopePythonGIL gil;
+
+	if (!request.IsValid())
+	{
+		UE_LOG(LogPython, Error, TEXT("Unable to retrieve HTTP infos"));
+		return;
+	}
+
+	PyObject* ret = PyObject_CallFunction(py_callable, (char*)"Oii", py_http_request, sent, received);
+	if (!ret)
+	{
+		unreal_engine_py_log_error();
+		return;
+	}
+	Py_DECREF(ret);
+}
+
 void FPythonSmartHttpDelegate::OnRequestProgress(FHttpRequestPtr request, int32 sent, int32 received)
 {
 	FScopePythonGIL gil;
@@ -225,7 +244,11 @@ static PyObject *py_ue_ihttp_request_bind_on_request_progress(ue_PyIHttpRequest 
 	py_delegate->SetPyCallable(py_callable);
 	// this trick avoids generating a new python object
 	py_delegate->SetPyHttpRequest(self);
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4)
+	self->http_request->OnRequestProgress64().BindSP(py_delegate, &FPythonSmartHttpDelegate::OnRequestProgress64);
+#else
 	self->http_request->OnRequestProgress().BindSP(py_delegate, &FPythonSmartHttpDelegate::OnRequestProgress);
+#endif
 
 	Py_RETURN_NONE;
 }
@@ -307,7 +330,7 @@ static int ue_py_ihttp_request_init(ue_PyIHttpRequest *self, PyObject *args, PyO
 	{
 		return -1;
 	}
-	new(&self->http_request) TSharedRef<IHttpRequest>(FHttpModule::Get().CreateRequest());
+	new(&self->http_request) TSharedRef<IHttpRequest, ESPMode::ThreadSafe>(FHttpModule::Get().CreateRequest());
 	new(&self->on_process_request_complete) TSharedPtr<FPythonSmartHttpDelegate>(nullptr);
 	new(&self->on_request_progress) TSharedPtr<FPythonSmartHttpDelegate>(nullptr);
 	self->py_dict = PyDict_New();

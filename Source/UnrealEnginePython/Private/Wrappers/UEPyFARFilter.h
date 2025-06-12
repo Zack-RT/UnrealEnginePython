@@ -3,14 +3,14 @@
 
 #if WITH_EDITOR
 
-#include "AssetRegistryModule.h"
-#include "Runtime/AssetRegistry/Public/ARFilter.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "AssetRegistry/ARFilter.h"
 
 typedef struct
 {
 	PyObject_HEAD
-		/* Type-specific fields go here. */
-		FARFilter filter;
+	/* Type-specific fields go here. */
+	FARFilter filter;
 	PyObject *class_names;
 	PyObject *object_paths;
 	PyObject *package_names;

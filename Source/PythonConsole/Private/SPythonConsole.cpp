@@ -37,7 +37,11 @@ void SPythonConsole::Construct( const FArguments& InArgs, const EPythonConsoleSt
 					.HeightOverride( 200.0f )
 					[
 						SNew( SBorder )
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+							.BorderImage(FAppStyle::GetBrush( "ToolPanel.GroupBorder" ) )
+#else
 							.BorderImage( FEditorStyle::GetBrush( "ToolPanel.GroupBorder" ) )
+#endif
 							.ColorAndOpacity( this, &SPythonConsole::GetAnimatedColorAndOpacity )
 							.BorderBackgroundColor( this, &SPythonConsole::GetAnimatedSlateColor )
 							[
@@ -57,7 +61,11 @@ void SPythonConsole::Construct( const FArguments& InArgs, const EPythonConsoleSt
 			[
 				SNew( SBorder )
 				.Padding( FMargin(2) )
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+				.BorderImage(FAppStyle::GetBrush( "PythonConsole.Background" ) )
+#else
 				.BorderImage( FEditorStyle::GetBrush( "PythonConsole.Background" ) )
+#endif
 				.ColorAndOpacity( this, &SPythonConsole::GetAnimatedColorAndOpacity )
 				.BorderBackgroundColor( this, &SPythonConsole::GetAnimatedSlateColor )
 				[

@@ -6,86 +6,7 @@ using System.Collections.Generic;
 
 public class UnrealEnginePython : ModuleRules
 {
-
-    // leave this string as empty for triggering auto-discovery of python installations...
-    private string pythonHome = "";
-    // otherwise specify the path of your python installation
-    //private string pythonHome = "C:/Program Files/Python36";
-    // this is an example for Homebrew on Mac
-    //private string pythonHome = "/usr/local/Cellar/python3/3.6.0/Frameworks/Python.framework/Versions/3.6/";
-    // on Linux an include;libs syntax is expected:
-    //private string pythonHome = "/usr/local/include/python3.6;/usr/local/lib/libpython3.6.so";
-
-    private string[] windowsKnownPaths =
-    {
-       // "C:/Program Files/Python37",
-        "C:/Program Files/Python36",
-        "C:/Program Files/Python35",
-        "C:/Python27",
-        "C:/IntelPython35"
-    };
-
-    private string[] macKnownPaths =
-    {
-        "/Library/Frameworks/Python.framework/Versions/3.7",
-        "/Library/Frameworks/Python.framework/Versions/3.6",
-        "/Library/Frameworks/Python.framework/Versions/3.5",
-        "/Library/Frameworks/Python.framework/Versions/2.7",
-        "/System/Library/Frameworks/Python.framework/Versions/3.7",
-        "/System/Library/Frameworks/Python.framework/Versions/3.6",
-        "/System/Library/Frameworks/Python.framework/Versions/3.5",
-        "/System/Library/Frameworks/Python.framework/Versions/2.7"
-    };
-
-    private string[] linuxKnownIncludesPaths =
-    {
-        "/usr/local/include/python3.7",
-        "/usr/local/include/python3.7m",
-        "/usr/local/include/python3.6",
-        "/usr/local/include/python3.6m",
-        "/usr/local/include/python3.5",
-        "/usr/local/include/python3.5m",
-        "/usr/local/include/python2.7",
-        "/usr/include/python3.7",
-        "/usr/include/python3.7m",
-        "/usr/include/python3.6",
-        "/usr/include/python3.6m",
-        "/usr/include/python3.5",
-        "/usr/include/python3.5m",
-        "/usr/include/python2.7",
-    };
-
-    private string[] linuxKnownLibsPaths =
-    {
-        "/usr/local/lib/libpython3.7.so",
-        "/usr/local/lib/libpython3.7m.so",
-        "/usr/local/lib/x86_64-linux-gnu/libpython3.7.so",
-        "/usr/local/lib/x86_64-linux-gnu/libpython3.7m.so",
-        "/usr/local/lib/libpython3.6.so",
-        "/usr/local/lib/libpython3.6m.so",
-        "/usr/local/lib/x86_64-linux-gnu/libpython3.6.so",
-        "/usr/local/lib/x86_64-linux-gnu/libpython3.6m.so",
-        "/usr/local/lib/libpython3.5.so",
-        "/usr/local/lib/libpython3.5m.so",
-        "/usr/local/lib/x86_64-linux-gnu/libpython3.5.so",
-        "/usr/local/lib/x86_64-linux-gnu/libpython3.5m.so",
-        "/usr/local/lib/libpython2.7.so",
-        "/usr/local/lib/x86_64-linux-gnu/libpython2.7.so",
-        "/usr/lib/libpython3.7.so",
-        "/usr/lib/libpython3.7m.so",
-        "/usr/lib/x86_64-linux-gnu/libpython3.7.so",
-        "/usr/lib/x86_64-linux-gnu/libpython3.7m.so",
-        "/usr/lib/libpython3.6.so",
-        "/usr/lib/libpython3.6m.so",
-        "/usr/lib/x86_64-linux-gnu/libpython3.6.so",
-        "/usr/lib/x86_64-linux-gnu/libpython3.6m.so",
-        "/usr/lib/libpython3.5.so",
-        "/usr/lib/libpython3.5m.so",
-        "/usr/lib/x86_64-linux-gnu/libpython3.5.so",
-        "/usr/lib/x86_64-linux-gnu/libpython3.5m.so",
-        "/usr/lib/libpython2.7.so",
-        "/usr/lib/x86_64-linux-gnu/libpython2.7.so",
-    };
+    private string PythonHome;
 
 #if WITH_FORWARDED_MODULE_RULES_CTOR
     public UnrealEnginePython(ReadOnlyTargetRules Target) : base(Target)
@@ -95,9 +16,8 @@ public class UnrealEnginePython : ModuleRules
     {
 
         PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-        string enableUnityBuild = System.Environment.GetEnvironmentVariable("UEP_ENABLE_UNITY_BUILD");
-        bFasterWithoutUnity = string.IsNullOrEmpty(enableUnityBuild);
-
+        PublicDefinitions.Add("WITH_UNREALENGINEPYTHON=1"); // fixed
+        PythonHome = Path.Combine(PluginDirectory, "Resources", "python_build_dependency");
         PublicIncludePaths.AddRange(
             new string[] {
 				// ... add public include paths required here ...
@@ -142,11 +62,12 @@ public class UnrealEnginePython : ModuleRules
                 "MovieSceneCapture",
                 "Landscape",
                 "Foliage",
-                "AIModule"
+                "AIModule",
+                "ApplicationCore",
+                "HairStrandsCore"
 				// ... add private dependencies that you statically link with here ...
 			}
             );
-
 
 #if WITH_FORWARDED_MODULE_RULES_CTOR
         BuildVersion Version;
@@ -196,83 +117,38 @@ public class UnrealEnginePython : ModuleRules
                 "Persona",
                 "PropertyEditor",
                 "LandscapeEditor",
-                "MaterialEditor"
+                "MaterialEditor",
+                "Json",
+                "AssetManagerEditor"
             });
         }
 
-        if ((Target.Platform == UnrealTargetPlatform.Win64) || (Target.Platform == UnrealTargetPlatform.Win32))
+        if (Target.Platform == UnrealTargetPlatform.Win64)
         {
-            if (pythonHome == "")
-            {
-                pythonHome = DiscoverPythonPath(windowsKnownPaths, "Win64");
-                if (pythonHome == "")
-                {
-                    throw new System.Exception("Unable to find Python installation");
-                }
-            }
-            System.Console.WriteLine("Using Python at: " + pythonHome);
-            PublicIncludePaths.Add(pythonHome);
-            string libPath = GetWindowsPythonLibFile(pythonHome);
-            PublicLibraryPaths.Add(Path.GetDirectoryName(libPath));
+            SetPath(PythonHome);
+            System.Console.WriteLine("[UnrealEnginePython] Using Python at: " + PythonHome);
+            PublicIncludePaths.Add(PythonHome);
+            string libPath = GetWindowsPythonLibFile(PythonHome);
+            System.Console.WriteLine("[UnrealEnginePython] Using libPath at: " + libPath);
             PublicAdditionalLibraries.Add(libPath);
-        }
-        else if (Target.Platform == UnrealTargetPlatform.Mac)
-        {
-            if (pythonHome == "")
+
+            string PydllPath = Path.GetFullPath(Path.Combine(PluginDirectory, "Resources", "python_runtime_dependency"));
+            foreach (string FilePath in Directory.EnumerateFiles(PydllPath, "*", SearchOption.AllDirectories))
             {
-                pythonHome = DiscoverPythonPath(macKnownPaths, "Mac");
-                if (pythonHome == "")
+                if (FilePath.EndsWith(".dll") || FilePath.EndsWith(".pyd") || FilePath.EndsWith(".zip"))
                 {
-                    throw new System.Exception("Unable to find Python installation");
+                    string FileName = Path.GetFileName(FilePath);
+                    RuntimeDependencies.Add(Path.Combine("$(BinaryOutputDir)", FileName), FilePath);
                 }
             }
-            System.Console.WriteLine("Using Python at: " + pythonHome);
-            PublicIncludePaths.Add(pythonHome);
-            string libPath = GetMacPythonLibFile(pythonHome);
-            PublicLibraryPaths.Add(Path.GetDirectoryName(libPath));
-            PublicDelayLoadDLLs.Add(libPath);
         }
-        else if (Target.Platform == UnrealTargetPlatform.Linux)
+        else
         {
-            if (pythonHome == "")
-            {
-                string includesPath = DiscoverLinuxPythonIncludesPath();
-                if (includesPath == null)
-                {
-                    throw new System.Exception("Unable to find Python includes, please add a search path to linuxKnownIncludesPaths");
-                }
-                string libsPath = DiscoverLinuxPythonLibsPath();
-                if (libsPath == null)
-                {
-                    throw new System.Exception("Unable to find Python libs, please add a search path to linuxKnownLibsPaths");
-                }
-                PublicIncludePaths.Add(includesPath);
-                PublicAdditionalLibraries.Add(libsPath);
-
-            }
-            else
-            {
-                string[] items = pythonHome.Split(';');
-                PublicIncludePaths.Add(items[0]);
-                PublicAdditionalLibraries.Add(items[1]);
-            }
+            throw new System.Exception(string.Format("[UnrealEnginePython] Unsupported Platform: {0}, Only support Win64.", Target.Platform.ToString()));
         }
-#if WITH_FORWARDED_MODULE_RULES_CTOR
-        else if (Target.Platform == UnrealTargetPlatform.Android)
-        {
-            PublicIncludePaths.Add(System.IO.Path.Combine(ModuleDirectory, "../../android/python35/include"));
-            PublicLibraryPaths.Add(System.IO.Path.Combine(ModuleDirectory, "../../android/armeabi-v7a"));
-            PublicAdditionalLibraries.Add("python3.5m");
-
-            string APLName = "UnrealEnginePython_APL.xml";
-            string RelAPLPath = Utils.MakePathRelativeTo(System.IO.Path.Combine(ModuleDirectory, APLName), Target.RelativeEnginePath);
-            AdditionalPropertiesForReceipt.Add(new ReceiptProperty("AndroidPlugin", RelAPLPath));
-        }
-#endif
-
     }
 
-    private bool IsPathRelative(string Path)
+    private static bool IsPathRelative(string Path)
     {
         bool IsRooted = Path.StartsWith("\\", System.StringComparison.Ordinal) || // Root of the current directory on Windows. Also covers "\\" for UNC or "network" paths.
                         Path.StartsWith("/", System.StringComparison.Ordinal) ||  // Root of the current directory on Windows, root on UNIX-likes.
@@ -283,17 +159,16 @@ public class UnrealEnginePython : ModuleRules
 
     private string DiscoverPythonPath(string[] knownPaths, string binaryPath)
     {
-        // insert the PYTHONHOME content as the first known path
         List<string> paths = new List<string>(knownPaths);
-        paths.Insert(0, Path.Combine(ModuleDirectory, "../../Binaries", binaryPath));
+        // insert the PYTHONHOME content
         string environmentPath = System.Environment.GetEnvironmentVariable("PYTHONHOME");
         if (!string.IsNullOrEmpty(environmentPath))
-            paths.Insert(0, environmentPath);
+            paths.Add(environmentPath);
 
         // look in an alternate custom location
         environmentPath = System.Environment.GetEnvironmentVariable("UNREALENGINEPYTHONHOME");
         if (!string.IsNullOrEmpty(environmentPath))
-            paths.Insert(0, environmentPath);
+            paths.Add(environmentPath);
 
         foreach (string path in paths)
         {
@@ -319,100 +194,9 @@ public class UnrealEnginePython : ModuleRules
         return "";
     }
 
-    private string DiscoverLinuxPythonIncludesPath()
+    private static string GetWindowsPythonLibFile(string basePath)
     {
-        List<string> paths = new List<string>(linuxKnownIncludesPaths);
-        paths.Insert(0, Path.Combine(ModuleDirectory, "../../Binaries", "Linux", "include"));
-        foreach (string path in paths)
-        {
-            string headerFile = Path.Combine(path, "Python.h");
-            if (File.Exists(headerFile))
-            {
-                return path;
-            }
-        }
-        return null;
-    }
-
-    private string DiscoverLinuxPythonLibsPath()
-    {
-        List<string> paths = new List<string>(linuxKnownLibsPaths);
-        paths.Insert(0, Path.Combine(ModuleDirectory, "../../Binaries", "Linux", "lib"));
-        paths.Insert(0, Path.Combine(ModuleDirectory, "../../Binaries", "Linux", "lib64"));
-        foreach (string path in paths)
-        {
-            if (File.Exists(path))
-            {
-                return path;
-            }
-        }
-        return null;
-    }
-
-    private string GetMacPythonLibFile(string basePath)
-    {
-        // first try with python3
-        for (int i = 9; i >= 0; i--)
-        {
-            string fileName = string.Format("libpython3.{0}.dylib", i);
-            string fullPath = Path.Combine(basePath, "lib", fileName);
-            if (File.Exists(fullPath))
-            {
-                return fullPath;
-            }
-            fileName = string.Format("libpython3.{0}m.dylib", i);
-            fullPath = Path.Combine(basePath, "lib", fileName);
-            if (File.Exists(fullPath))
-            {
-                return fullPath;
-            }
-        }
-
-        // then python2
-        for (int i = 9; i >= 0; i--)
-        {
-            string fileName = string.Format("libpython2.{0}.dylib", i);
-            string fullPath = Path.Combine(basePath, "lib", fileName);
-            if (File.Exists(fullPath))
-            {
-                return fullPath;
-            }
-            fileName = string.Format("libpython2.{0}m.dylib", i);
-            fullPath = Path.Combine(basePath, "lib", fileName);
-            if (File.Exists(fullPath))
-            {
-                return fullPath;
-            }
-        }
-
-        throw new System.Exception("Invalid Python installation, missing .dylib files");
-    }
-
-    private string GetWindowsPythonLibFile(string basePath)
-    {
-        // just for usability, report if the pythonHome is not in the system path
-        string[] allPaths = System.Environment.GetEnvironmentVariable("PATH").Split(';');
-        // this will transform the slashes in backslashes...
-        string checkedPath = Path.GetFullPath(basePath);
-        if (checkedPath.EndsWith("\\"))
-        {
-            checkedPath = checkedPath.Remove(checkedPath.Length - 1);
-        }
-        bool found = false;
-        foreach (string item in allPaths)
-        {
-            if (item == checkedPath || item == checkedPath + "\\")
-            {
-                found = true;
-                break;
-            }
-        }
-        if (!found)
-        {
-            System.Console.WriteLine("[WARNING] Your Python installation is not in the system PATH environment variable.");
-            System.Console.WriteLine("[WARNING] Ensure your python paths are set in GlobalConfig (DefaultEngine.ini) so the path can be corrected at runtime.");
-        }
-        // first try with python3
+        // try with python3
         for (int i = 9; i >= 0; i--)
         {
             string fileName = string.Format("python3{0}.lib", i);
@@ -422,18 +206,50 @@ public class UnrealEnginePython : ModuleRules
                 return fullPath;
             }
         }
+        throw new System.Exception("[UnrealEnginePython] Invalid Python installation, missing .lib files");
+    }
 
-        // then python2
-        for (int i = 9; i >= 0; i--)
+    private static bool CopyDirectory(string SourcePath, string DestinationPath, bool overwriteexisting)
+    {
+        bool ret = false;
+
+        SourcePath = SourcePath.EndsWith(@"\") ? SourcePath : SourcePath + @"\";
+        DestinationPath = DestinationPath.EndsWith(@"\") ? DestinationPath : DestinationPath + @"\";
+
+        if (Directory.Exists(SourcePath))
         {
-            string fileName = string.Format("python2{0}.lib", i);
-            string fullPath = Path.Combine(basePath, "libs", fileName);
-            if (File.Exists(fullPath))
+            if (Directory.Exists(DestinationPath) == false)
+                Directory.CreateDirectory(DestinationPath);
+
+            foreach (string fls in Directory.GetFiles(SourcePath))
             {
-                return fullPath;
+                FileInfo flinfo = new FileInfo(fls);
+                if (!File.Exists(DestinationPath + flinfo.Name))
+                {
+                    flinfo.CopyTo(DestinationPath + flinfo.Name, overwriteexisting);
+                }
+            }
+            foreach (string drs in Directory.GetDirectories(SourcePath))
+            {
+                DirectoryInfo drinfo = new DirectoryInfo(drs);
+                if (CopyDirectory(drs, DestinationPath + drinfo.Name, overwriteexisting) == false)
+                    ret = false;
             }
         }
+        ret = true;
 
-        throw new System.Exception("Invalid Python installation, missing .lib files");
+        return ret;
+    }
+
+    public static void SetPath(string pathValue)
+    {
+        string pathstr;
+        pathstr = System.Environment.GetEnvironmentVariable("PATH");
+        bool isContains = pathstr.ToLower().Contains(pathValue.ToLower());//true
+        if (!isContains)
+        {
+            System.Environment.SetEnvironmentVariable("PATH", pathstr + pathValue + ";");
+        }
+        return;
     }
 }

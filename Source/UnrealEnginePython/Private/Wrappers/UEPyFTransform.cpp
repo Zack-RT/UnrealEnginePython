@@ -82,7 +82,7 @@ static PyObject *py_ue_ftransform_transform_position_no_scale(ue_PyFTransform *s
 	return py_ue_new_fvector(self->transform.TransformPositionNoScale(py_vec->vec));
 }
 
-#if ENGINE_MINOR_VERSION > 17
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 17)
 static PyObject *py_ue_ftransform_transform_rotation(ue_PyFTransform *self, PyObject * args)
 {
 	PyObject *py_obj;
@@ -103,7 +103,7 @@ static PyObject *py_ue_ftransform_get_matrix(ue_PyFTransform *self, PyObject * a
 	FTransform transform = self->transform;
 	transform.NormalizeRotation();
 	FMatrix matrix = transform.ToMatrixWithScale();
-	UScriptStruct *u_struct = FindObject<UScriptStruct>(ANY_PACKAGE, UTF8_TO_TCHAR("Matrix"));
+	UScriptStruct *u_struct = FindFirstObjectSafe<UScriptStruct>(UTF8_TO_TCHAR("Matrix"));
 	if (!u_struct)
 	{
 		return PyErr_Format(PyExc_Exception, "unable to get Matrix struct");
@@ -120,7 +120,7 @@ static PyMethodDef ue_PyFTransform_methods[] = {
 	{ "transform_vector_no_scale", (PyCFunction)py_ue_ftransform_transform_vector_no_scale, METH_VARARGS, "" },
 	{ "transform_position", (PyCFunction)py_ue_ftransform_transform_position, METH_VARARGS, "" },
 	{ "transform_position_no_scale", (PyCFunction)py_ue_ftransform_transform_position_no_scale, METH_VARARGS, "" },
-#if ENGINE_MINOR_VERSION > 17
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 17)
 	{ "transform_rotation", (PyCFunction)py_ue_ftransform_transform_rotation, METH_VARARGS, "" },
 #endif
 	{ NULL }  /* Sentinel */

@@ -5,17 +5,19 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/KismetMathLibrary.h"
 
+#include "CoreGlobals.h"
+#include "Misc/CoreMisc.h"
 #include "Developer/DesktopPlatform/Public/IDesktopPlatform.h"
 #include "Developer/DesktopPlatform/Public/DesktopPlatformModule.h"
 #if WITH_EDITOR
 #include "PackageTools.h"
 #include "Editor.h"
 #endif
-
+#include "Misc/App.h"
 #include "UnrealEngine.h"
 #include "Runtime/Engine/Classes/Engine/GameViewportClient.h"
 
-#if ENGINE_MINOR_VERSION >= 18
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 18)
 #include "HAL/PlatformApplicationMisc.h"
 #endif
 
@@ -177,7 +179,7 @@ PyObject *py_unreal_engine_get_up_vector(PyObject * self, PyObject * args)
 
 PyObject *py_unreal_engine_get_content_dir(PyObject * self, PyObject * args)
 {
-#if ENGINE_MINOR_VERSION >= 18
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 18)
 	return PyUnicode_FromString(TCHAR_TO_UTF8(*FPaths::ProjectContentDir()));
 #else
 	return PyUnicode_FromString(TCHAR_TO_UTF8(*FPaths::GameContentDir()));
@@ -186,7 +188,7 @@ PyObject *py_unreal_engine_get_content_dir(PyObject * self, PyObject * args)
 
 PyObject *py_unreal_engine_get_game_saved_dir(PyObject * self, PyObject * args)
 {
-#if ENGINE_MINOR_VERSION >= 18
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 18)
 	return PyUnicode_FromString(TCHAR_TO_UTF8(*FPaths::ProjectSavedDir()));
 #else
 	return PyUnicode_FromString(TCHAR_TO_UTF8(*FPaths::GameSavedDir()));
@@ -215,7 +217,7 @@ PyObject *py_unreal_engine_object_path_to_package_name(PyObject * self, PyObject
 	{
 		return NULL;
 	}
-	return PyUnicode_FromString(TCHAR_TO_UTF8(*FPackageName::ObjectPathToPackageName(UTF8_TO_TCHAR(path))));
+	return PyUnicode_FromString(TCHAR_TO_UTF8(*FPackageName::ObjectPathToPackageName(FString(UTF8_TO_TCHAR(path)))));
 }
 
 PyObject *py_unreal_engine_get_path(PyObject * self, PyObject * args)
@@ -259,7 +261,7 @@ PyObject *py_unreal_engine_find_class(PyObject * self, PyObject * args)
 		return NULL;
 	}
 
-	UClass *u_class = FindObject<UClass>(ANY_PACKAGE, UTF8_TO_TCHAR(name));
+	UClass *u_class = FindFirstObjectSafe<UClass>(UTF8_TO_TCHAR(name));
 
 	if (!u_class)
 		return PyErr_Format(PyExc_Exception, "unable to find class %s", name);
@@ -275,7 +277,7 @@ PyObject *py_unreal_engine_find_enum(PyObject * self, PyObject * args)
 		return NULL;
 	}
 
-	UEnum *u_enum = FindObject<UEnum>(ANY_PACKAGE, UTF8_TO_TCHAR(name));
+	UEnum *u_enum = FindFirstObjectSafe<UEnum>(UTF8_TO_TCHAR(name));
 
 	if (!u_enum)
 		return PyErr_Format(PyExc_Exception, "unable to find enum %s", name);
@@ -315,7 +317,11 @@ PyObject *py_unreal_engine_unload_package(PyObject * self, PyObject * args)
 	}
 
 	FText outErrorMsg;
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 21)
+	if (!UPackageTools::UnloadPackages({ packageToUnload }, outErrorMsg))
+#else
 	if (!PackageTools::UnloadPackages({ packageToUnload }, outErrorMsg))
+#endif
 	{
 		return PyErr_Format(PyExc_Exception, "%s", TCHAR_TO_UTF8(*outErrorMsg.ToString()));
 	}
@@ -332,12 +338,32 @@ PyObject *py_unreal_engine_get_package_filename(PyObject * self, PyObject * args
 	}
 
 	FString Filename;
+#if ENGINE_MAJOR_VERSION == 5
+	if (!FPackageName::DoesPackageExist(FString(UTF8_TO_TCHAR(name)), &Filename))
+#else
 	if (!FPackageName::DoesPackageExist(FString(UTF8_TO_TCHAR(name)), nullptr, &Filename))
+#endif
 		return PyErr_Format(PyExc_Exception, "package does not exist");
 
 	return PyUnicode_FromString(TCHAR_TO_UTF8(*Filename));
 }
 #endif
+
+PyObject *py_unreal_engine_collect_garbage(PyObject * self, PyObject * args)
+{
+	Py_BEGIN_ALLOW_THREADS
+	CollectGarbage(RF_NoFlags, true);
+	Py_END_ALLOW_THREADS
+	Py_RETURN_NONE;
+}
+
+PyObject *py_unreal_engine_get_engine_version(PyObject * self, PyObject * args)
+{
+	PyObject *t = PyTuple_New(2);
+	PyTuple_SetItem(t, 0, PyLong_FromLong(ENGINE_MAJOR_VERSION));
+	PyTuple_SetItem(t, 1, PyLong_FromLong(ENGINE_MINOR_VERSION));
+	return t;
+}
 
 PyObject *py_unreal_engine_load_class(PyObject * self, PyObject * args)
 {
@@ -389,7 +415,7 @@ PyObject *py_unreal_engine_find_struct(PyObject * self, PyObject * args)
 		return NULL;
 	}
 
-	UScriptStruct *u_struct = FindObject<UScriptStruct>(ANY_PACKAGE, UTF8_TO_TCHAR(name));
+	UScriptStruct *u_struct = FindFirstObjectSafe<UScriptStruct>(UTF8_TO_TCHAR(name));
 
 	if (!u_struct)
 		return PyErr_Format(PyExc_Exception, "unable to find struct %s", name);
@@ -446,7 +472,10 @@ PyObject *py_unreal_engine_load_object(PyObject * self, PyObject * args)
 	if (filename)
 		t_filename = UTF8_TO_TCHAR(filename);
 
-	UObject *u_object = StaticLoadObject(u_class, NULL, UTF8_TO_TCHAR(name), t_filename);
+	UObject* u_object = nullptr;
+	Py_BEGIN_ALLOW_THREADS;
+	u_object = StaticLoadObject(u_class, NULL, UTF8_TO_TCHAR(name), t_filename);
+	Py_END_ALLOW_THREADS;
 
 	if (!u_object)
 		return PyErr_Format(PyExc_Exception, "unable to load object %s", name);
@@ -467,7 +496,7 @@ PyObject *py_unreal_engine_string_to_guid(PyObject * self, PyObject * args)
 
 	if (FGuid::Parse(FString(str), guid))
 	{
-		return py_ue_new_owned_uscriptstruct(FindObject<UScriptStruct>(ANY_PACKAGE, UTF8_TO_TCHAR((char *)"Guid")), (uint8 *)&guid);
+		return py_ue_new_owned_uscriptstruct(FindFirstObjectSafe<UScriptStruct>(UTF8_TO_TCHAR((char *)"Guid")), (uint8 *)&guid);
 	}
 
 	return PyErr_Format(PyExc_Exception, "unable to build FGuid");
@@ -478,7 +507,7 @@ PyObject *py_unreal_engine_new_guid(PyObject * self, PyObject * args)
 
 	FGuid guid = FGuid::NewGuid();
 
-	return py_ue_new_owned_uscriptstruct(FindObject<UScriptStruct>(ANY_PACKAGE, UTF8_TO_TCHAR((char *)"Guid")), (uint8 *)&guid);
+	return py_ue_new_owned_uscriptstruct(FindFirstObjectSafe<UScriptStruct>(UTF8_TO_TCHAR((char *)"Guid")), (uint8 *)&guid);
 }
 
 PyObject *py_unreal_engine_guid_to_string(PyObject * self, PyObject * args)
@@ -550,7 +579,7 @@ PyObject *py_unreal_engine_find_object(PyObject * self, PyObject * args)
 		return NULL;
 	}
 
-	UObject *u_object = FindObject<UObject>(ANY_PACKAGE, UTF8_TO_TCHAR(name));
+	UObject *u_object = FindFirstObjectSafe<UObject>(UTF8_TO_TCHAR(name));
 
 	if (!u_object)
 		return PyErr_Format(PyExc_Exception, "unable to find object %s", name);
@@ -589,7 +618,9 @@ PyObject *py_unreal_engine_new_object(PyObject * self, PyObject * args)
 		outer = ue_py_check_type<UObject>(py_outer);
 		if (!outer)
 			return PyErr_Format(PyExc_Exception, "argument is not a UObject");
+		EXTRA_UE_LOG(LogPython, Warning, TEXT("object creation outer is %s"), *outer->GetName());
 	}
+
 
 	UObject *new_object = nullptr;
 	Py_BEGIN_ALLOW_THREADS;
@@ -719,6 +750,31 @@ PyObject *py_unreal_engine_tobject_iterator(PyObject * self, PyObject * args)
 		PyList_Append(ret, (PyObject *)py_obj);
 	}
 	return ret;
+}
+
+PyObject* py_unreal_engine_can_ever_render(PyObject*, PyObject*)
+{
+	if(FApp::CanEverRender())
+	{
+		Py_RETURN_TRUE;
+	}
+	
+	bool bIsRunningCommandlet = IsRunningCommandlet();
+	bool bIsAllowCommandletRendering = FParse::Param(FCommandLine::Get(), TEXT("AllowCommandletRendering"));
+	bool bIsRunningDedicatedServer = IsRunningDedicatedServer();
+	bool bHasNullRHIOnCommandline =  FParse::Param(FCommandLine::Get(), TEXT("nullrhi"));
+	FString DebugStr = FString::Printf(TEXT("py_unreal_engine_can_ever_render: bIsRunningCommandlet=%d, bIsAllowCommandletRendering=%d, bIsRunningDedicatedServer=%d, bHasNullRHIOnCommandline=%d, USE_NULL_RHI=%d"),
+		bIsRunningCommandlet, bIsAllowCommandletRendering, bIsRunningDedicatedServer, bHasNullRHIOnCommandline, USE_NULL_RHI);
+	UE_LOG(LogPython, Log, TEXT("%s"),*DebugStr);
+	
+	Py_RETURN_FALSE;
+}
+
+PyObject* py_unreal_engine_slate_is_initialized(PyObject*, PyObject*)
+{
+	if(FSlateApplication::IsInitialized())
+		Py_RETURN_TRUE;
+	Py_RETURN_FALSE;
 }
 
 PyObject *py_unreal_engine_create_and_dispatch_when_ready(PyObject * self, PyObject * args)
@@ -1045,16 +1101,20 @@ PyObject *py_unreal_engine_create_package(PyObject *self, PyObject * args)
 		return nullptr;
 	}
 
-	UPackage *u_package = (UPackage *)StaticFindObject(nullptr, ANY_PACKAGE, UTF8_TO_TCHAR(name), true);
+	UPackage *u_package = (UPackage *)StaticFindFirstObjectSafe(nullptr, UTF8_TO_TCHAR(name), EFindFirstObjectOptions::ExactClass);
 	// create a new package if it does not exist
 	if (u_package)
 	{
 		return PyErr_Format(PyExc_Exception, "package %s already exists", TCHAR_TO_UTF8(*u_package->GetPathName()));
 	}
+#if ENGINE_MAJOR_VERSION == 5
+	u_package = CreatePackage(UTF8_TO_TCHAR(name));
+#else
 	u_package = CreatePackage(nullptr, UTF8_TO_TCHAR(name));
+#endif
 	if (!u_package)
 		return PyErr_Format(PyExc_Exception, "unable to create package");
-	u_package->FileName = *FPackageName::LongPackageNameToFilename(UTF8_TO_TCHAR(name), FPackageName::GetAssetPackageExtension());
+	u_package->SetLoadedPath(FPackagePath::FromPackageNameChecked(UTF8_TO_TCHAR(name)));
 
 	u_package->FullyLoad();
 	u_package->MarkPackageDirty();
@@ -1072,14 +1132,18 @@ PyObject *py_unreal_engine_get_or_create_package(PyObject *self, PyObject * args
 		return nullptr;
 	}
 
-	UPackage *u_package = (UPackage *)StaticFindObject(nullptr, ANY_PACKAGE, UTF8_TO_TCHAR(name), true);
+	UPackage *u_package = (UPackage *)StaticFindFirstObjectSafe(nullptr, UTF8_TO_TCHAR(name), EFindFirstObjectOptions::ExactClass);
 	// create a new package if it does not exist
 	if (!u_package)
 	{
+#if ENGINE_MAJOR_VERSION == 5
+		u_package = CreatePackage(UTF8_TO_TCHAR(name));
+#else
 		u_package = CreatePackage(nullptr, UTF8_TO_TCHAR(name));
+#endif
 		if (!u_package)
 			return PyErr_Format(PyExc_Exception, "unable to create package");
-		u_package->FileName = *FPackageName::LongPackageNameToFilename(UTF8_TO_TCHAR(name), FPackageName::GetAssetPackageExtension());
+		u_package->SetLoadedPath(FPackagePath::FromPackageNameChecked(UTF8_TO_TCHAR(name)));
 
 		u_package->FullyLoad();
 		u_package->MarkPackageDirty();
@@ -1284,7 +1348,6 @@ PyObject *py_unreal_engine_copy_properties_for_unrelated_objects(PyObject * self
 		return PyErr_Format(PyExc_Exception, "argument is not a UObject");
 
 	UEngine::FCopyPropertiesForUnrelatedObjectsParams params;
-	params.bAggressiveDefaultSubobjectReplacement = (py_aggressive_default_subobject_replacement && PyObject_IsTrue(py_aggressive_default_subobject_replacement));
 	params.bCopyDeprecatedProperties = (py_copy_deprecated_properties && PyObject_IsTrue(py_copy_deprecated_properties));
 	params.bDoDelta = (py_do_delta && PyObject_IsTrue(py_do_delta));
 	params.bNotifyObjectReplacement = (py_notify_object_replacement && PyObject_IsTrue(py_notify_object_replacement));
@@ -1324,7 +1387,7 @@ PyObject *py_unreal_engine_clipboard_copy(PyObject * self, PyObject * args)
 		return nullptr;
 	}
 
-#if ENGINE_MINOR_VERSION >= 18
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 18)
 	FPlatformApplicationMisc::ClipboardCopy(UTF8_TO_TCHAR(text));
 #else
 	FGenericPlatformMisc::ClipboardCopy(UTF8_TO_TCHAR(text));
@@ -1335,10 +1398,123 @@ PyObject *py_unreal_engine_clipboard_copy(PyObject * self, PyObject * args)
 PyObject *py_unreal_engine_clipboard_paste(PyObject * self, PyObject * args)
 {
 	FString clipboard;
-#if ENGINE_MINOR_VERSION >= 18
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 18)
 	FPlatformApplicationMisc::ClipboardPaste(clipboard);
 #else
 	FGenericPlatformMisc::ClipboardPaste(clipboard);
 #endif
 	return PyUnicode_FromString(TCHAR_TO_UTF8(*clipboard));
+}
+
+PyObject *py_unreal_engine_get_pixel_format_string(PyObject * self, PyObject * args)
+{
+	int PixelFormatIndex;
+
+	if (!PyArg_ParseTuple(args, "i:get_pixel_format_string", &PixelFormatIndex))
+	{
+		Py_RETURN_NONE;
+	}
+
+	return PyUnicode_FromString(TCHAR_TO_UTF8(GetPixelFormatString(static_cast<EPixelFormat>(PixelFormatIndex))));
+}
+
+PyObject *py_unreal_engine_get_pixel_format_from_string(PyObject * self, PyObject * args)
+{
+	char *pixel_format;
+	if (!PyArg_ParseTuple(args, "s:get_pixel_format_from_string", &pixel_format))
+	{
+		Py_RETURN_NONE;
+	}
+	
+	return PyLong_FromLong(GetPixelFormatFromString(UTF8_TO_TCHAR(pixel_format)));
+}
+
+PyObject *py_unreal_engine_is_pixel_format_ASTCBlockCompressed(PyObject * self, PyObject * args)
+{
+	int PixelFormatIndex;
+	if (!PyArg_ParseTuple(args, "i:is_pixel_format_ASTCBlockCompressed", &PixelFormatIndex))
+	{
+		Py_RETURN_NONE;
+	}
+	
+	return PyBool_FromLong(IsASTCBlockCompressedTextureFormat(static_cast<EPixelFormat>(PixelFormatIndex)));
+}
+
+PyObject *py_unreal_engine_is_pixel_format_BlockCompressed(PyObject * self, PyObject * args)
+{
+	int PixelFormatIndex;
+	if (!PyArg_ParseTuple(args, "i:is_pixel_format_BlockCompressed", &PixelFormatIndex))
+	{
+		Py_RETURN_NONE;
+	}
+	
+	return PyBool_FromLong(IsBlockCompressedFormat(static_cast<EPixelFormat>(PixelFormatIndex)));
+}
+
+PyObject *py_unreal_engine_is_pixel_format_Integer(PyObject * self, PyObject * args)
+{
+	int PixelFormatIndex;
+	if (!PyArg_ParseTuple(args, "i:is_pixel_format_Integer", &PixelFormatIndex))
+	{
+		Py_RETURN_NONE;
+	}
+	
+	return PyBool_FromLong(IsInteger(static_cast<EPixelFormat>(PixelFormatIndex)));
+}
+
+PyObject *py_unreal_engine_is_pixel_format_Float(PyObject * self, PyObject * args)
+{
+	int PixelFormatIndex;
+	if (!PyArg_ParseTuple(args, "i:is_pixel_format_Float", &PixelFormatIndex))
+	{
+		Py_RETURN_NONE;
+	}
+	
+	return PyBool_FromLong(IsFloatFormat(static_cast<EPixelFormat>(PixelFormatIndex)));
+}
+
+PyObject *py_unreal_engine_is_pixel_format_DepthOrStencil(PyObject * self, PyObject * args)
+{
+	int PixelFormatIndex;
+	if (!PyArg_ParseTuple(args, "i:is_pixel_format_DepthOrStencil", &PixelFormatIndex))
+	{
+		Py_RETURN_NONE;
+	}
+	
+	return PyBool_FromLong(IsDepthOrStencilFormat(static_cast<EPixelFormat>(PixelFormatIndex)));
+}
+
+PyObject *py_unreal_engine_is_pixel_format_Stencil(PyObject * self, PyObject * args)
+{
+	int PixelFormatIndex;
+	if (!PyArg_ParseTuple(args, "i:is_pixel_format_Stencil", &PixelFormatIndex))
+	{
+		Py_RETURN_NONE;
+	}
+	
+	return PyBool_FromLong(IsStencilFormat(static_cast<EPixelFormat>(PixelFormatIndex)));
+}
+
+PyObject *py_unreal_engine_is_pixel_format_DXTCBlockCompressed(PyObject * self, PyObject * args)
+{
+	
+	int PixelFormatIndex;
+	if (!PyArg_ParseTuple(args, "i:is_pixel_format_DXTCBlockCompressed", &PixelFormatIndex))
+	{
+		Py_RETURN_NONE;
+	}
+	
+	return PyBool_FromLong(IsDXTCBlockCompressedTextureFormat(static_cast<EPixelFormat>(PixelFormatIndex)));
+}
+
+PyObject *py_unreal_engine_is_pixel_format_HDR(PyObject * self, PyObject * args)
+{
+	
+	int PixelFormatIndex;
+	if (!PyArg_ParseTuple(args, "i:is_pixel_format_HDR", &PixelFormatIndex))
+	{
+		Py_RETURN_NONE;
+	}
+	
+	return PyBool_FromLong(IsHDR(static_cast<EPixelFormat>(PixelFormatIndex)));
 }

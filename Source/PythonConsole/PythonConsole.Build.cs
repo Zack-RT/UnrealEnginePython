@@ -13,7 +13,7 @@ public class PythonConsole : ModuleRules
     {
         PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
         string enableUnityBuild = System.Environment.GetEnvironmentVariable("UEP_ENABLE_UNITY_BUILD");
-        bFasterWithoutUnity = string.IsNullOrEmpty(enableUnityBuild);
+        bUseUnity = string.IsNullOrEmpty(enableUnityBuild);
 
         PrivateIncludePaths.AddRange(
             new string[] {
@@ -21,7 +21,6 @@ public class PythonConsole : ModuleRules
 				// ... add other private include paths required here ...
 			}
         );
-
         PrivateDependencyModuleNames.AddRange(
             new string[] {
                 "Core",
@@ -33,7 +32,11 @@ public class PythonConsole : ModuleRules
                 "SlateCore",
                 "EditorStyle",
                 "TargetPlatform",
-                "UnrealEnginePython"
+                "OutputLog",
+                "UnrealEnginePython",
+                "LevelEditor",
+                "Projects",
+                "ToolMenus"
             }
         );
 

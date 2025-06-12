@@ -40,6 +40,8 @@ PyObject *py_unreal_engine_unload_package(PyObject *, PyObject *);
 PyObject *py_unreal_engine_get_package_filename(PyObject *, PyObject *);
 #endif
 
+PyObject *py_unreal_engine_get_engine_version(PyObject *, PyObject *);
+PyObject *py_unreal_engine_collect_garbage(PyObject *, PyObject *);
 PyObject *py_unreal_engine_string_to_guid(PyObject *, PyObject *);
 PyObject *py_unreal_engine_new_guid(PyObject *, PyObject *);
 PyObject *py_unreal_engine_guid_to_string(PyObject *, PyObject *);
@@ -54,7 +56,8 @@ PyObject *py_unreal_engine_all_classes(PyObject *, PyObject *);
 PyObject *py_unreal_engine_all_worlds(PyObject *, PyObject *);
 PyObject *py_unreal_engine_tobject_iterator(PyObject *, PyObject *);
 
-PyObject *py_unreal_engine_all_worlds(PyObject *, PyObject *);
+PyObject *py_unreal_engine_can_ever_render(PyObject *, PyObject *);
+PyObject *py_unreal_engine_slate_is_initialized(PyObject *, PyObject *);
 PyObject *py_unreal_engine_tobject_iterator(PyObject *, PyObject *);
 
 
@@ -95,6 +98,16 @@ PyObject *py_unreal_engine_editor_get_active_viewport_size(PyObject *, PyObject 
 PyObject *py_unreal_engine_editor_get_pie_viewport_size(PyObject *, PyObject *);
 #endif
 
+PyObject *py_unreal_engine_get_pixel_format_string(PyObject *, PyObject *);
+PyObject *py_unreal_engine_get_pixel_format_from_string(PyObject *, PyObject *);
+PyObject *py_unreal_engine_is_pixel_format_ASTCBlockCompressed(PyObject *, PyObject *);
+PyObject *py_unreal_engine_is_pixel_format_BlockCompressed(PyObject *, PyObject *);
+PyObject *py_unreal_engine_is_pixel_format_Integer(PyObject *, PyObject *);
+PyObject *py_unreal_engine_is_pixel_format_Float(PyObject *, PyObject *);
+PyObject *py_unreal_engine_is_pixel_format_DepthOrStencil(PyObject *, PyObject *);
+PyObject *py_unreal_engine_is_pixel_format_Stencil(PyObject *, PyObject *);
+PyObject *py_unreal_engine_is_pixel_format_DXTCBlockCompressed(PyObject *, PyObject *);
+PyObject *py_unreal_engine_is_pixel_format_HDR(PyObject * self, PyObject * args);
 
 #if PLATFORM_MAC
 PyObject *py_unreal_engine_main_thread_call(PyObject *, PyObject *);

@@ -11,8 +11,11 @@ PyObject *py_ue_render_target_get_data_to_buffer(ue_PyUObject *, PyObject *);
 PyObject *py_ue_texture_set_data(ue_PyUObject *, PyObject *);
 PyObject *py_ue_texture_get_width(ue_PyUObject *, PyObject *);
 PyObject *py_ue_texture_get_height(ue_PyUObject *, PyObject *);
+PyObject* py_ue_texture_get_max_in_game_size(ue_PyUObject*, PyObject*);
 
 PyObject *py_ue_texture_has_alpha_channel(ue_PyUObject *, PyObject *);
+PyObject *py_ue_texture_get_num_mips(ue_PyUObject *, PyObject *);
+PyObject *py_ue_texture_get_platform_size(ue_PyUObject *, PyObject *);
 
 PyObject *py_unreal_engine_compress_image_array(PyObject *, PyObject *);
 PyObject *py_unreal_engine_create_checkerboard_texture(PyObject *, PyObject *);
@@ -21,6 +24,7 @@ PyObject *py_unreal_engine_create_transient_texture(PyObject *, PyObject *);
 PyObject *py_unreal_engine_create_transient_texture_render_target2d(PyObject *, PyObject *);
 
 PyObject *py_ue_texture_update_resource(ue_PyUObject *, PyObject *);
+PyObject *py_ue_texture_get_pixel_format(ue_PyUObject *, PyObject *);
 
 #if WITH_EDITOR
 PyObject *py_unreal_engine_create_texture(PyObject * self, PyObject *);

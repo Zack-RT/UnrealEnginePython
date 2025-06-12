@@ -1,5 +1,9 @@
 #include "UEPyAnimSequence.h"
-
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+#include "Animation/AnimData/AnimDataModel.h"
+#include "Animation/AnimSequenceHelpers.h"
+#endif
+#include "CoreTypes.h"
 
 PyObject *py_ue_anim_get_skeleton(ue_PyUObject * self, PyObject * args)
 {
@@ -40,7 +44,11 @@ PyObject *py_ue_anim_get_bone_transform(ue_PyUObject * self, PyObject * args)
 		bUseRawData = true;
 
 	FTransform OutAtom;
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 2)
+	anim->GetBoneTransform(OutAtom, FSkeletonPoseBoneIndex(track_index), frame_time, bUseRawData);
+#else
 	anim->GetBoneTransform(OutAtom, track_index, frame_time, bUseRawData);
+#endif
 
 	return py_ue_new_ftransform(OutAtom);
 }
@@ -65,8 +73,11 @@ PyObject *py_ue_anim_extract_bone_transform(ue_PyUObject * self, PyObject * args
 	if (rast)
 	{
 		FTransform OutAtom;
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+		UE::Anim::ExtractBoneTransform(rast->raw_anim_sequence_track, OutAtom, frame_time);
+#else
 		anim->ExtractBoneTransform(rast->raw_anim_sequence_track, OutAtom, frame_time);
-
+#endif
 		return py_ue_new_ftransform(OutAtom);
 	}
 
@@ -98,14 +109,9 @@ PyObject *py_ue_anim_extract_root_motion(ue_PyUObject * self, PyObject * args)
 	return py_ue_new_ftransform(anim->ExtractRootMotion(start_time, delta_time, bAllowLooping));
 }
 
-
-
-
-
-
 #if WITH_EDITOR
-#if ENGINE_MINOR_VERSION > 13
-#if ENGINE_MINOR_VERSION < 23
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 13)
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 23))
 PyObject *py_ue_anim_sequence_update_compressed_track_map_from_raw(ue_PyUObject * self, PyObject * args)
 {
 	ue_py_check(self);
@@ -120,7 +126,8 @@ PyObject *py_ue_anim_sequence_update_compressed_track_map_from_raw(ue_PyUObject 
 }
 #endif
 
-
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+#else
 PyObject *py_ue_anim_sequence_get_raw_animation_data(ue_PyUObject * self, PyObject * args)
 {
 	ue_py_check(self);
@@ -158,6 +165,7 @@ PyObject *py_ue_anim_sequence_get_raw_animation_track(ue_PyUObject * self, PyObj
 
 	return py_ue_new_fraw_anim_sequence_track(anim_seq->GetRawAnimationTrack(index));
 }
+#endif
 
 PyObject *py_ue_anim_add_key_to_sequence(ue_PyUObject * self, PyObject * args)
 {
@@ -190,24 +198,29 @@ PyObject *py_ue_anim_sequence_apply_raw_anim_changes(ue_PyUObject * self, PyObje
 	if (!anim_seq)
 		return PyErr_Format(PyExc_Exception, "UObject is not a UAnimSequence.");
 
-
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+#else
 	if (anim_seq->DoesNeedRebake())
 	{
 		anim_seq->Modify(true);
 		anim_seq->BakeTrackCurvesToRawAnimation();
 	}
-
+#endif
 	if (anim_seq->DoesNeedRecompress())
 	{
 		anim_seq->Modify(true);
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 2)
+		anim_seq->CacheDerivedData(GetTargetPlatformManagerRef().GetRunningTargetPlatform());
+#else
 		anim_seq->RequestSyncAnimRecompression(false);
+#endif
 	}
 
 	Py_RETURN_NONE;
 }
 
-
-
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+#else
 PyObject *py_ue_anim_sequence_add_new_raw_track(ue_PyUObject * self, PyObject * args)
 {
 	ue_py_check(self);
@@ -245,6 +258,7 @@ PyObject *py_ue_anim_sequence_add_new_raw_track(ue_PyUObject * self, PyObject * 
 
 	return PyLong_FromLong(index);
 }
+#endif
 
 PyObject *py_ue_anim_sequence_update_raw_track(ue_PyUObject * self, PyObject * args)
 {
@@ -267,19 +281,21 @@ PyObject *py_ue_anim_sequence_update_raw_track(ue_PyUObject * self, PyObject * a
 
 	anim_seq->Modify();
 
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+	FName BoneName = anim_seq->GetDataModel()->GetBoneTrackByIndex(track_index).Name;
+	anim_seq->GetController().SetBoneTrackKeys(BoneName, py_f_rast->raw_anim_sequence_track.PosKeys,
+		py_f_rast->raw_anim_sequence_track.RotKeys, py_f_rast->raw_anim_sequence_track.ScaleKeys);
+#else
 	FRawAnimSequenceTrack& RawRef = anim_seq->GetRawAnimationTrack(track_index);
-
 	RawRef.PosKeys = py_f_rast->raw_anim_sequence_track.PosKeys;
 	RawRef.RotKeys = py_f_rast->raw_anim_sequence_track.RotKeys;
 	RawRef.ScaleKeys = py_f_rast->raw_anim_sequence_track.ScaleKeys;
-
 	anim_seq->MarkRawDataAsModified();
+#endif
 	anim_seq->MarkPackageDirty();
 
 	Py_RETURN_NONE;
 }
-
-
 
 PyObject *py_ue_add_anim_composite_section(ue_PyUObject * self, PyObject * args)
 {
@@ -329,9 +345,9 @@ PyObject *py_ue_get_blend_parameter(ue_PyUObject * self, PyObject * args)
 	if (!PyArg_ParseTuple(args, "i:get_blend_parameter", &index))
 		return nullptr;
 
-	UBlendSpaceBase *blend = ue_py_check_type<UBlendSpaceBase>(self);
+	UBlendSpace *blend = ue_py_check_type<UBlendSpace>(self);
 	if (!blend)
-		return PyErr_Format(PyExc_Exception, "UObject is not a UBlendSpaceBase.");
+		return PyErr_Format(PyExc_Exception, "UObject is not a UBlendSpace.");
 
 	if (index < 0 || index > 2)
 		return PyErr_Format(PyExc_Exception, "invalid Blend Parameter index");
@@ -350,9 +366,9 @@ PyObject *py_ue_set_blend_parameter(ue_PyUObject * self, PyObject * args)
 	if (!PyArg_ParseTuple(args, "iO:get_blend_parameter", &index, &py_blend))
 		return nullptr;
 
-	UBlendSpaceBase *blend = ue_py_check_type<UBlendSpaceBase>(self);
+	UBlendSpace *blend = ue_py_check_type<UBlendSpace>(self);
 	if (!blend)
-		return PyErr_Format(PyExc_Exception, "UObject is not a UBlendSpaceBase.");
+		return PyErr_Format(PyExc_Exception, "UObject is not a UBlendSpace.");
 
 	if (index < 0 || index > 2)
 		return PyErr_Format(PyExc_Exception, "invalid Blend Parameter index");
@@ -366,4 +382,22 @@ PyObject *py_ue_set_blend_parameter(ue_PyUObject * self, PyObject * args)
 	FMemory::Memcpy((uint8 *)&orig_parameter, parameter, FBlendParameter::StaticStruct()->GetStructureSize());
 
 	Py_RETURN_NONE;
+}
+
+
+PyObject *py_ue_anim_get_frame_rate(ue_PyUObject * self, PyObject * args)
+{
+	ue_py_check(self);
+
+	UAnimSequence *anim_seq = ue_py_check_type<UAnimSequence>(self);
+	if (!anim_seq)
+		return PyErr_Format(PyExc_Exception, "UObject is not a UAnimSequence.");
+		
+	FFrameRate framerate = anim_seq->GetDataModel()->GetFrameRate();
+	
+	PyObject *tuple = PyTuple_New(2);
+	PyTuple_SetItem(tuple, 0, PyFloat_FromDouble(framerate.Numerator));
+	PyTuple_SetItem(tuple, 1, PyFloat_FromDouble(framerate.Denominator));
+
+	return tuple;
 }

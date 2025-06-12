@@ -40,7 +40,7 @@ int32 UPyCommandlet::Main(const FString& CommandLine)
 	const FRegexPattern myPattern(RegexString);
 	FRegexMatcher myMatcher(myPattern, *CommandLine);
 	myMatcher.FindNext();
-#if ENGINE_MINOR_VERSION >= 18
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 18)
 	FString PyCommandLine = myMatcher.GetCaptureGroup(0).TrimStart().TrimEnd();
 #else
 	FString PyCommandLine = myMatcher.GetCaptureGroup(0).Trim().TrimTrailing();
@@ -81,29 +81,29 @@ int32 UPyCommandlet::Main(const FString& CommandLine)
 	PyArgv.Insert(Filepath, 0);
 
 #if PY_MAJOR_VERSION >= 3
-	wchar_t **argv = (wchar_t **)malloc(PyArgv.Num() * sizeof(void*));
+	wchar_t **argv = (wchar_t **)FMemory::Malloc(PyArgv.Num() * sizeof(void*));
 #else
-	char **argv = (char **)malloc(PyArgv.Num() * sizeof(void*));
+	char **argv = (char **)FMemory::Malloc(PyArgv.Num() * sizeof(void*));
 #endif
 
 	for (int i = 0; i < PyArgv.Num(); i++)
 	{
 #if PY_MAJOR_VERSION >= 3
-		argv[i] = (wchar_t*)malloc(PyArgv[i].Len() + 1);
+		argv[i] = (wchar_t*)FMemory::Malloc((PyArgv[i].Len() + 1) * sizeof(wchar_t));
 #if PLATFORM_MAC || PLATFORM_LINUX
-	#if ENGINE_MINOR_VERSION >= 20
+	#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20)
 		wcsncpy(argv[i], (const wchar_t *) TCHAR_TO_WCHAR(*PyArgv[i].ReplaceEscapedCharWithChar()), PyArgv[i].Len() + 1);
 	#else
 		wcsncpy(argv[i], *PyArgv[i].ReplaceEscapedCharWithChar(), PyArgv[i].Len() + 1);
 	#endif
-#elif PLATFORM_ANDROID
+#elif PLATFORM_ANDROID || PLATFORM_IOS
 		wcsncpy(argv[i], (const wchar_t *)*PyArgv[i].ReplaceEscapedCharWithChar(), PyArgv[i].Len() + 1);
 #else
 		wcscpy_s(argv[i], PyArgv[i].Len() + 1, *PyArgv[i].ReplaceEscapedCharWithChar());
 #endif
 #else
-		argv[i] = (char*)malloc(PyArgv[i].Len() + 1);
-#if PLATFORM_MAC || PLATFORM_LINUX || PLATFORM_ANDROID
+		argv[i] = (char*)FMemory::Malloc((PyArgv[i].Len() + 1) * sizeof(char));
+#if PLATFORM_MAC || PLATFORM_LINUX || PLATFORM_ANDROID || PLATFORM_IOS
 		strncpy(argv[i], TCHAR_TO_UTF8(*PyArgv[i].ReplaceEscapedCharWithChar()), PyArgv[i].Len() + 1);
 #else
 		strcpy_s(argv[i], PyArgv[i].Len() + 1, TCHAR_TO_UTF8(*PyArgv[i].ReplaceEscapedCharWithChar()));

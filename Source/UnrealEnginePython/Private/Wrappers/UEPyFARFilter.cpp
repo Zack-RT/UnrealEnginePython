@@ -318,22 +318,62 @@ void ue_sync_farfilter_name_array(PyObject *pylist, TArray<FName> &uelist)
 	}
 }
 
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+void ue_sync_farfilter_class_path_array(PyObject* pylist, TArray<FTopLevelAssetPath>& uelist)
+{
+	Py_ssize_t pylist_len = PyList_Size(pylist);
+	uelist.Reset(pylist_len);
+	for (int i = 0; i < (int)pylist_len; i++)
+	{
+		PyObject* py_item = PyList_GetItem(pylist, i);
+
+		TCHAR *class_name = UTF8_TO_TCHAR(UEPyUnicode_AsUTF8(py_item));
+		UClass *u_class = FindFirstObjectSafe<UClass>(class_name);
+
+		if (!u_class)
+		{
+			UE_LOG(LogPython, Warning, TEXT("unable to find class %s"), class_name);
+			continue;
+		}
+		uelist.Add(FTopLevelAssetPath(u_class->GetPathName()));
+	}
+}
+
+void ue_sync_farfilter_object_path_array(PyObject* pylist, TArray<FSoftObjectPath>& uelist)
+{
+	Py_ssize_t pylist_len = PyList_Size(pylist);
+	uelist.Reset(pylist_len);
+	for (int i = 0; i < (int)pylist_len; i++)
+	{
+		PyObject* py_item = PyList_GetItem(pylist, i);
+		uelist.Add(FSoftObjectPath(UTF8_TO_TCHAR(UEPyUnicode_AsUTF8(py_item))));
+	}
+}
+#endif
+
 void py_ue_sync_farfilter(PyObject *pyobj)
 {
 	ue_PyFARFilter *pyfilter = py_ue_is_farfilter(pyobj);
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+	// UE_DEPRECATED(5.1, "Class names are now represented by path names. Please use ClassPaths.")
+	ue_sync_farfilter_class_path_array(pyfilter->class_names, pyfilter->filter.ClassPaths);
+	// UE_DEPRECATED(5.1, "Asset path FNames have been deprecated, use FSoftObjectPath instead.")
+	ue_sync_farfilter_object_path_array(pyfilter->object_paths, pyfilter->filter.SoftObjectPaths);
+#else
 	ue_sync_farfilter_name_array(pyfilter->class_names, pyfilter->filter.ClassNames);
 	ue_sync_farfilter_name_array(pyfilter->object_paths, pyfilter->filter.ObjectPaths);
+#endif
 	ue_sync_farfilter_name_array(pyfilter->package_names, pyfilter->filter.PackageNames);
 	ue_sync_farfilter_name_array(pyfilter->package_paths, pyfilter->filter.PackagePaths);
 
 	PyObject *pyset = pyfilter->recursive_classes_exclusion_set;
 	Py_ssize_t pyset_len = PySet_Size(pyset);
 	PyObject *py_item;
-	pyfilter->filter.RecursiveClassesExclusionSet.Reset();
+	pyfilter->filter.RecursiveClassPathsExclusionSet.Reset();
 	for (int i = 0; i < (int)pyset_len; i++)
 	{
 		py_item = PyList_GetItem(pyset, i);
-		pyfilter->filter.RecursiveClassesExclusionSet.Add(FName(UTF8_TO_TCHAR(UEPyUnicode_AsUTF8(py_item))));
+		pyfilter->filter.RecursiveClassPathsExclusionSet.Add(FTopLevelAssetPath(UTF8_TO_TCHAR(UEPyUnicode_AsUTF8(py_item))));
 	}
 
 	PyObject *pykey, *pyvalue;
@@ -347,7 +387,7 @@ void py_ue_sync_farfilter(PyObject *pyobj)
 		for (int i = 0; i < (int)pyset_len; i++)
 		{
 			py_item = PyList_GetItem(pyset, i);
-#if ENGINE_MINOR_VERSION < 20
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 			pyfilter->filter.TagsAndValues.AddUnique(ukey, UTF8_TO_TCHAR(UEPyUnicode_AsUTF8(py_item)));
 #else
 			pyfilter->filter.TagsAndValues.AddUnique(ukey, FString(UTF8_TO_TCHAR(UEPyUnicode_AsUTF8(py_item))));

@@ -8,7 +8,13 @@
 #include "Runtime/Slate/Public/Widgets/Input/SSearchBox.h"
 #include "Runtime/Launch/Resources/Version.h"
 #include "Runtime/Slate/Public/Framework/Text/SlateTextLayout.h"
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+#include "Settings/EditorStyleSettings.h"
+#include "EditorStyleSet.h"
+#include "OutputLogSettings.h"
+#else
 #include "Editor/EditorStyle/Public/Classes/EditorStyleSettings.h"
+#endif
 #include "SlateBasics.h"
 #include "EditorStyle.h"
 
@@ -24,16 +30,16 @@ public:
 	/** Hint text that appears when there is no text in the text box */
 	SLATE_ATTRIBUTE(FText, HintText)
 
-		/** Called whenever the text is changed interactively by the user */
-		SLATE_EVENT(FOnTextChanged, OnTextChanged)
+	/** Called whenever the text is changed interactively by the user */
+	SLATE_EVENT(FOnTextChanged, OnTextChanged)
 
-		/** Called whenever the text is committed.  This happens when the user presses enter or the text box loses focus. */
-		SLATE_EVENT(FOnTextCommitted, OnTextCommitted)
+	/** Called whenever the text is committed.  This happens when the user presses enter or the text box loses focus. */
+	SLATE_EVENT(FOnTextCommitted, OnTextCommitted)
 
-		SLATE_END_ARGS()
+	SLATE_END_ARGS()
 
 
-		void Construct(const FArguments& InArgs)
+	void Construct(const FArguments& InArgs)
 	{
 		SetStyle(&FCoreStyle::Get().GetWidgetStyle< FEditableTextBoxStyle >("NormalEditableTextBox"));
 
@@ -45,8 +51,8 @@ public:
 			[
 				SAssignNew(EditableText, SPythonConsoleEditableText)
 				.HintText(InArgs._HintText)
-			.OnTextChanged(InArgs._OnTextChanged)
-			.OnTextCommitted(InArgs._OnTextCommitted)
+				.OnTextChanged(InArgs._OnTextChanged)
+				.OnTextCommitted(InArgs._OnTextCommitted)
 			]);
 	}
 
@@ -67,14 +73,14 @@ private:
 		SLATE_BEGIN_ARGS(SPythonConsoleEditableText) {}
 		/** The text that appears when there is nothing typed into the search box */
 		SLATE_ATTRIBUTE(FText, HintText)
-			/** Called whenever the text is changed interactively by the user */
-			SLATE_EVENT(FOnTextChanged, OnTextChanged)
+		/** Called whenever the text is changed interactively by the user */
+		SLATE_EVENT(FOnTextChanged, OnTextChanged)
 
-			/** Called whenever the text is committed.  This happens when the user presses enter or the text box loses focus. */
-			SLATE_EVENT(FOnTextCommitted, OnTextCommitted)
-			SLATE_END_ARGS()
+		/** Called whenever the text is committed.  This happens when the user presses enter or the text box loses focus. */
+		SLATE_EVENT(FOnTextCommitted, OnTextCommitted)
+		SLATE_END_ARGS()
 
-			void Construct(const FArguments& InArgs)
+		void Construct(const FArguments& InArgs)
 		{
 			SEditableText::Construct
 			(
@@ -175,7 +181,7 @@ void SPythonConsoleInputBox::Construct(const FArguments& InArgs)
 
 			SAssignNew(InputText, SPythonConsoleEditableTextBox)
 			.OnTextCommitted(this, &SPythonConsoleInputBox::OnTextCommitted)
-		.HintText(NSLOCTEXT("PythonConsole", "TypeInConsoleHint", "Enter python command"))
+			.HintText(NSLOCTEXT("PythonConsole", "TypeInConsoleHint", "Enter python command"))
 
 		];
 
@@ -183,6 +189,8 @@ void SPythonConsoleInputBox::Construct(const FArguments& InArgs)
 	TextBox->SetPythonBox(this);
 	IsMultiline = false;
 }
+END_SLATE_FUNCTION_BUILD_OPTIMIZATION
+
 void SPythonConsoleInputBox::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
 {
 	if (!GIntraFrameDebuggingGameThread && !IsEnabled())
@@ -303,7 +311,9 @@ bool FPythonLogTextLayoutMarshaller::AppendMessage(const TCHAR* InText, const EL
 			}
 
 			// If we've already been given a text layout, then append these new messages rather than force a refresh of the entire document
-			AppendMessagesToTextLayout(NewMessages);
+			if (IsInGameThread() || IsInSlateThread() || IsInAsyncLoadingThread())
+				// UE5.1开始OutPutDevice输出在一个单独的线程，会引起FSlateApplication::Get()中的断言错误，可能需要重构SPythonLog来解决
+				AppendMessagesToTextLayout(NewMessages);
 		}
 		else
 		{
@@ -347,8 +357,10 @@ void FPythonLogTextLayoutMarshaller::AppendMessagesToTextLayout(const TArray<TSh
 
 		LinesToAdd.Emplace(MoveTemp(LineText), MoveTemp(Runs));
 	}
-
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+#else
 	TextLayout->AddLines(LinesToAdd);
+#endif
 }
 
 void FPythonLogTextLayoutMarshaller::ClearMessages()
@@ -371,66 +383,17 @@ FPythonLogTextLayoutMarshaller::FPythonLogTextLayoutMarshaller(TArray< TSharedPt
 BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
 void SPythonLog::Construct(const FArguments& InArgs)
 {
-#if ENGINE_MINOR_VERSION < 18
-	MessagesTextMarshaller = FPythonLogTextLayoutMarshaller::Create(MoveTemp(InArgs._Messages));
-#else
-	MessagesTextMarshaller = FPythonLogTextLayoutMarshaller::Create(InArgs._Messages);
-#endif
-
-	MessagesTextBox = SNew(SMultiLineEditableTextBox)
-		.Style(FEditorStyle::Get(), "Log.TextBox")
-		.TextStyle(FEditorStyle::Get(), "Log.Normal")
-		.ForegroundColor(FLinearColor::Gray)
-		.Marshaller(MessagesTextMarshaller)
-		.IsReadOnly(true)
-		.AlwaysShowScrollbars(true)
-		.OnVScrollBarUserScrolled(this, &SPythonLog::OnUserScrolled)
-		.ContextMenuExtender(this, &SPythonLog::ExtendTextBoxMenu);
-
 	ChildSlot
-		[
-			SNew(SVerticalBox)
-
-			// Console output and filters
-		+ SVerticalBox::Slot()
-		[
-			SNew(SBorder)
-			.Padding(3)
-		.BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
-		[
-			SNew(SVerticalBox)
-
-			// Output log area
-		+ SVerticalBox::Slot()
-		.FillHeight(1)
-		[
-			MessagesTextBox.ToSharedRef()
-		]
-		]
-		]
-
-	// The console input box
-	+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(FMargin(0.0f, 4.0f, 0.0f, 0.0f))
-		[
-			SNew(SPythonConsoleInputBox)
-			.OnConsoleCommandExecuted(this, &SPythonLog::OnConsoleCommandExecuted)
-		]];
-
-	GLog->AddOutputDevice(this);
-
-	bIsUserScrolled = false;
-	RequestForceScroll();
+	[
+		SNew(SPythonConsoleInputBox)
+		.OnConsoleCommandExecuted(this, &SPythonLog::OnConsoleCommandExecuted)
+	];
 }
 END_SLATE_FUNCTION_BUILD_OPTIMIZATION
 
 SPythonLog::~SPythonLog()
 {
-	if (GLog != NULL)
-	{
-		GLog->RemoveOutputDevice(this);
-	}
+
 }
 
 bool SPythonLog::CreateLogMessages(const TCHAR* V, ELogVerbosity::Type Verbosity, const class FName& Category, TArray< TSharedPtr<FLogMessage> >& OutMessages)
@@ -465,7 +428,11 @@ bool SPythonLog::CreateLogMessages(const TCHAR* V, ELogVerbosity::Type Verbosity
 		if (UObjectInitialized() && !GExitPurge)
 		{
 			// Logging can happen very late during shutdown, even after the UObject system has been torn down, hence the init check above
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+			LogTimestampMode = GetDefault<UOutputLogSettings>()->LogTimestampMode;
+#else
 			LogTimestampMode = GetDefault<UEditorStyleSettings>()->LogTimestampMode;
+#endif
 		}
 
 		const int32 OldNumMessages = OutMessages.Num();
@@ -543,7 +510,7 @@ bool SPythonLog::CanClearLog() const
 
 void SPythonLog::OnConsoleCommandExecuted()
 {
-	RequestForceScroll();
+	//RequestForceScroll();
 }
 
 void SPythonLog::RequestForceScroll()

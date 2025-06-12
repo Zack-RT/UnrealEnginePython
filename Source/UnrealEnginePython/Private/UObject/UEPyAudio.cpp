@@ -77,13 +77,29 @@ PyObject *py_ue_sound_get_data(ue_PyUObject *self, PyObject * args)
 	USoundWave *sound = ue_py_check_type<USoundWave>(self);
 	if (!sound)
 		return PyErr_Format(PyExc_Exception, "UObject is not a USoundWave.");
-
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 4)
+	sound->RawDataCriticalSection.Lock();
+	FMemoryView buffer = sound->RawData.RawData.GetPayload().Get().GetView();
+	sound->RawDataCriticalSection.Unlock();
+	char* data = (char*)buffer.GetData();
+	int32 data_size = buffer.GetSize();
+	PyObject* py_data = PyBytes_FromStringAndSize(data, data_size);
+#elif (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+	auto raw_data = sound->RawData;
+	sound->RawDataCriticalSection.Lock();
+	FMemoryView buffer = raw_data.GetPayload().Get().GetView();
+	sound->RawDataCriticalSection.Unlock();
+	char* data = (char*)buffer.GetData();
+	int32 data_size = buffer.GetSize();
+	PyObject *py_data = PyBytes_FromStringAndSize(data, data_size);
+#else
 	FByteBulkData raw_data = sound->RawData;
-
 	char *data = (char *)raw_data.Lock(LOCK_READ_ONLY);
 	int32 data_size = raw_data.GetBulkDataSize();
 	PyObject *py_data = PyBytes_FromStringAndSize(data, data_size);
 	raw_data.Unlock();
+#endif
+
 	return py_data;
 }
 
@@ -105,11 +121,16 @@ PyObject *py_ue_sound_set_data(ue_PyUObject *self, PyObject * args)
 	sound->FreeResources();
 	sound->InvalidateCompressedData();
 
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+	sound->RawDataCriticalSection.Lock();
+	sound->RawData.UpdatePayload(FSharedBuffer::Clone(sound_buffer.buf, sound_buffer.len));
+	sound->RawDataCriticalSection.Unlock();
+#else
 	sound->RawData.Lock(LOCK_READ_WRITE);
 	void *data = sound->RawData.Realloc(sound_buffer.len);
 	FMemory::Memcpy(data, sound_buffer.buf, sound_buffer.len);
 	sound->RawData.Unlock();
-
+#endif
 	Py_RETURN_NONE;
 }
 
@@ -136,7 +157,7 @@ PyObject *py_ue_play_sound_at_location(ue_PyUObject *self, PyObject * args)
 	}
 	else if (PyUnicodeOrString_Check(sound))
 	{
-		sound_object = FindObject<USoundBase>(ANY_PACKAGE, UTF8_TO_TCHAR(UEPyUnicode_AsUTF8(sound)));
+		sound_object = FindFirstObjectSafe<USoundBase>(UTF8_TO_TCHAR(UEPyUnicode_AsUTF8(sound)));
 	}
 
 	if (!sound_object)

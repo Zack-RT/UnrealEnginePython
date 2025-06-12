@@ -5,7 +5,7 @@
 #include "PythonBlueprintFunctionLibrary.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformFilemanager.h"
-#if ENGINE_MINOR_VERSION < 13
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 13))
 #include "ClassIconFinder.h"
 #endif
 
@@ -14,7 +14,7 @@
 #include "Interfaces/IPluginManager.h"
 #endif
 
-#if ENGINE_MINOR_VERSION >= 18
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 18)
 #define PROJECT_CONTENT_DIR FPaths::ProjectContentDir()
 #else
 #define PROJECT_CONTENT_DIR FPaths::GameContentDir()
@@ -28,7 +28,26 @@ void unreal_engine_init_py_module();
 void init_unreal_engine_builtin();
 
 #if PLATFORM_LINUX
+// so something seems to have changed between 4.18 and 4.25 which means we can no longer
+// import python extension modules that have/are dynamic libraries (ie site?dist-packages modules)
+// eg import ctypes fails with missing dynamic link symbol found in the primary python shared library
+// it seems that the python extension modules are not able to access the primary
+// python shared library /usr/lib/x86_64-linux-gnu/libpythonx.x.so symbols
+// OK so this gets even more confusing as apparently on other linux distributions the python extension libraries
+// ARE linked with the primary python shared library - this is a debian/ubuntu issue
+// it appears what happened is that the default symbol visibility for global symbols was changed from default to hidden
+// - likely to reduce chance of symbol clashes - it could be particularly true now with Unreals python implementation
+// although that seems to use static linking - but this fixup may mean we cannot have both python implementations
+// active
+// note that ue4_module_options is a symbol whose existence and value is checked in either LinuxPlatformProcess.cpp (4.18)
+// or UnixPlatformProcess.cpp (4.25) to determine if to load dynamic libraries using RTLD_GLOBAL
+// - otherwise RTLD_LOCAL is used
+// it apparently has to be a global symbol itself for this to work
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 25)
+const char *ue4_module_options __attribute__((visibility("default"))) = "linux_global_symbols";
+#else
 const char *ue4_module_options = "linux_global_symbols";
+#endif
 #endif
 
 #include "Runtime/Core/Public/Misc/CommandLine.h"
@@ -43,10 +62,12 @@ const char *ue4_module_options = "linux_global_symbols";
 #endif
 
 #if PLATFORM_ANDROID
+#include "Misc/LocalTimestampDirectoryVisitor.h"
 #include "Android/AndroidJNI.h"
 #include "Android/AndroidApplication.h"
 #endif
 
+#include "include/marshal.h" // for PyMarshal_ReadLongFromFile
 
 const char *UEPyUnicode_AsUTF8(PyObject *py_str)
 {
@@ -121,7 +142,7 @@ void FUnrealEnginePythonModule::UESetupPythonInterpreter(bool verbose)
 	for (int32 i = 0; i < Args.Num(); i++)
 	{
 #if PY_MAJOR_VERSION >= 3
-	#if ENGINE_MINOR_VERSION >= 20
+	#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20)
 		argv[i] = (wchar_t *)(TCHAR_TO_WCHAR(*Args[i]));
 	#else
 		argv[i] = (wchar_t *)(*Args[i]);
@@ -148,12 +169,19 @@ void FUnrealEnginePythonModule::UESetupPythonInterpreter(bool verbose)
 	int i = 0;
 	for (FString ScriptsPath : ScriptsPaths)
 	{
-		char *scripts_path = TCHAR_TO_UTF8(*ScriptsPath);
-		PyObject *py_scripts_path = PyUnicode_FromString(scripts_path);
+#if PLATFORM_WINDOWS
+		if (ScriptsPath.Len() > _MAX_DIR)
+		{
+			UE_LOG(LogPython, Warning, TEXT("This is a very long path, which may cause error. Please make the modifications and try again: %s"), *ScriptsPath);
+			continue;
+		}
+#endif //PLATFORM_WINDOWS
+		FTCHARToUTF8 scripts_path(*ScriptsPath);
+		PyObject* py_scripts_path = PyUnicode_FromString(scripts_path.Get());
 		PyList_Insert(py_path, i++, py_scripts_path);
 		if (verbose)
 		{
-			UE_LOG(LogPython, Log, TEXT("Python Scripts search path: %s"), UTF8_TO_TCHAR(scripts_path));
+			UE_LOG(LogPython, Log, TEXT("Python Scripts search path: %s"), UTF8_TO_TCHAR(scripts_path.Get()));
 		}
 	}
 
@@ -242,14 +270,30 @@ FAutoConsoleCommand ExecPythonStringCommand(
 
 void FUnrealEnginePythonModule::StartupModule()
 {
+
 	BrutalFinalize = false;
+
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 8
+	// Python 3.7+ changes the C locale which affects functions using C string APIs
+	// So change the C locale back to its current setting after Py_Initialize has been called
+	FString CurrentLocale;
+
+	if (const char* CurrentLocalePtr = setlocale(LC_ALL, nullptr))
+	{
+		CurrentLocale = ANSI_TO_TCHAR(CurrentLocalePtr);
+	}
+#endif
 
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
 	FString PythonHome;
 	if (GConfig->GetString(UTF8_TO_TCHAR("Python"), UTF8_TO_TCHAR("Home"), PythonHome, GEngineIni))
 	{
 #if PY_MAJOR_VERSION >= 3
+	#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20)
+		wchar_t *home = (wchar_t *)(TCHAR_TO_WCHAR(*PythonHome));
+	#else
 		wchar_t *home = (wchar_t *)*PythonHome;
+	#endif
 #else
 		char *home = TCHAR_TO_UTF8(*PythonHome);
 #endif
@@ -263,7 +307,11 @@ void FUnrealEnginePythonModule::StartupModule()
 		FPaths::NormalizeFilename(PythonHome);
 		PythonHome = FPaths::ConvertRelativePathToFull(PythonHome);
 #if PY_MAJOR_VERSION >= 3
+	#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20)
+		wchar_t *home = (wchar_t *)(TCHAR_TO_WCHAR(*PythonHome));
+	#else
 		wchar_t *home = (wchar_t *)*PythonHome;
+	#endif
 #else
 		char *home = TCHAR_TO_UTF8(*PythonHome);
 #endif
@@ -277,7 +325,11 @@ void FUnrealEnginePythonModule::StartupModule()
 	if (GConfig->GetString(UTF8_TO_TCHAR("Python"), UTF8_TO_TCHAR("ProgramName"), IniValue, GEngineIni))
 	{
 #if PY_MAJOR_VERSION >= 3
+	#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20)
+		wchar_t *program_name = (wchar_t *)(TCHAR_TO_WCHAR(*IniValue));
+	#else
 		wchar_t *program_name = (wchar_t *)*IniValue;
+	#endif
 #else
 		char *program_name = TCHAR_TO_UTF8(*IniValue);
 #endif
@@ -290,7 +342,11 @@ void FUnrealEnginePythonModule::StartupModule()
 		FPaths::NormalizeFilename(IniValue);
 		IniValue = FPaths::ConvertRelativePathToFull(IniValue);
 #if PY_MAJOR_VERSION >= 3
+	#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20)
+		wchar_t *program_name = (wchar_t *)(TCHAR_TO_WCHAR(*IniValue));
+	#else
 		wchar_t *program_name = (wchar_t *)*IniValue;
+	#endif
 #else
 		char *program_name = TCHAR_TO_UTF8(*IniValue);
 #endif
@@ -333,29 +389,15 @@ void FUnrealEnginePythonModule::StartupModule()
 		IniValue.ParseIntoArray(ImportModules, separators, 3);
 	}
 
-	FString ProjectScriptsPath = FPaths::Combine(*PROJECT_CONTENT_DIR, UTF8_TO_TCHAR("Scripts"));
+	FString ProjectScriptsPath = FPaths::Combine(*PROJECT_CONTENT_DIR, UTF8_TO_TCHAR("pyScripts"));
 	if (!FPaths::DirectoryExists(ProjectScriptsPath))
 	{
 		FPlatformFileManager::Get().GetPlatformFile().CreateDirectory(*ProjectScriptsPath);
 	}
 	ScriptsPaths.Add(ProjectScriptsPath);
 
-#if WITH_EDITOR
-	for (TSharedRef<IPlugin>plugin : IPluginManager::Get().GetEnabledPlugins())
-	{
-		FString PluginScriptsPath = FPaths::Combine(plugin->GetContentDir(), UTF8_TO_TCHAR("Scripts"));
-		if (FPaths::DirectoryExists(PluginScriptsPath))
-		{
-			ScriptsPaths.Add(PluginScriptsPath);
-		}
-
-		// allows third parties to include their code in the main plugin directory
-		if (plugin->GetName() == "UnrealEnginePython")
-		{
-			ScriptsPaths.Add(plugin->GetBaseDir());
-		}
-	}
-#endif
+	FString PluginBaseDir = IPluginManager::Get().FindPlugin("UnrealEnginePython")->GetBaseDir();
+	ScriptsPaths.Add(FPaths::Combine(PluginBaseDir, UTF8_TO_TCHAR("Resources")));
 
 	if (ZipPath.IsEmpty())
 	{
@@ -371,7 +413,7 @@ void FUnrealEnginePythonModule::StartupModule()
 
 		const int32 MaxPathVarLen = 32768;
 		FString OrigPathVar = FString::ChrN(MaxPathVarLen, TEXT('\0'));
-#if ENGINE_MINOR_VERSION >= 21
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 21)
 		OrigPathVar = FPlatformMisc::GetEnvironmentVariable(TEXT("PATH"));
 #else
 		FPlatformMisc::GetEnvironmentVariable(TEXT("PATH"), OrigPathVar.GetCharArray().GetData(), MaxPathVarLen);
@@ -391,6 +433,7 @@ void FUnrealEnginePythonModule::StartupModule()
 		}
 
 		// Setup our own paths for PYTHONPATH
+		#if PLATFORM_WINDOWS
 		TArray<FString> OurPythonPaths = {
 			PythonHome,
 			FPaths::Combine(PythonHome, TEXT("Lib")),
@@ -403,62 +446,77 @@ void FUnrealEnginePythonModule::StartupModule()
 		PathVars.Append(OurPythonPaths);
 		FString ModifiedPath = FString::Join(PathVars, PathDelimiter);
 		FPlatformMisc::SetEnvironmentVar(TEXT("PATH"), *ModifiedPath);
+		#endif
 	}
-
 
 
 #if PY_MAJOR_VERSION >= 3
 	init_unreal_engine_builtin();
 #if PLATFORM_ANDROID
-	extern FString GOBBFilePathBase;
-	extern FString GFilePathBase;
+	FString InDirectory = FString(TEXT("Scripts"));
+
 	extern FString GExternalFilePath;
-	extern FString GPackageName;
-	extern int32 GAndroidPackageVersion;
-	FString OBBDir1 = GOBBFilePathBase + FString(TEXT("/Android/obb/") + GPackageName);
-	FString OBBDir2 = GOBBFilePathBase + FString(TEXT("/obb/") + GPackageName);
-	FString MainOBBName = FString::Printf(TEXT("main.%d.%s.obb"), GAndroidPackageVersion, *GPackageName);
-	FString PatchOBBName = FString::Printf(TEXT("patch.%d.%s.obb"), GAndroidPackageVersion, *GPackageName);
-	FString UnrealEnginePython_OBBPath;
-	if (FPaths::FileExists(*(OBBDir1 / MainOBBName)))
-	{
-		UnrealEnginePython_OBBPath = OBBDir1 / MainOBBName / FApp::GetProjectName() / FString(TEXT("Content/Scripts"));
-	}
-	else if (FPaths::FileExists(*(OBBDir2 / MainOBBName)))
-	{
-		UnrealEnginePython_OBBPath = OBBDir2 / MainOBBName / FApp::GetProjectName() / FString(TEXT("Content/Scripts"));
-	}
-	if (FPaths::FileExists(*(OBBDir1 / PatchOBBName)))
-	{
-		UnrealEnginePython_OBBPath = OBBDir1 / PatchOBBName / FApp::GetProjectName() / FString(TEXT("Content/Scripts"));
-	}
-	else if (FPaths::FileExists(*(OBBDir2 / PatchOBBName)))
-	{
-		UnrealEnginePython_OBBPath = OBBDir1 / PatchOBBName / FApp::GetProjectName() / FString(TEXT("Content/Scripts"));
-	}
 
-	if (!UnrealEnginePython_OBBPath.IsEmpty())
+	FString DirectoryPath = FPaths::ProjectContentDir() / InDirectory;
+
+	IFileManager* FileManager = &IFileManager::Get();
+
+	// iterate over all the files in provided directory
+	FLocalTimestampDirectoryVisitor Visitor(FPlatformFileManager::Get().GetPlatformFile(), TArray<FString>(),
+	                                        TArray<FString>(), false);
+
+	FileManager->IterateDirectoryRecursively(*DirectoryPath, Visitor);
+
+	FString Prefix = FApp::GetProjectName() / FString(TEXT("Content/Scripts/"));
+
+	for (TMap<FString, FDateTime>::TIterator TimestampIt(Visitor.FileTimes); TimestampIt; ++TimestampIt)
 	{
-		ScriptsPaths.Add(UnrealEnginePython_OBBPath);
-	}
+		FString Path = TimestampIt.Key();
 
-	FString FinalPath = GFilePathBase / FString("UE4Game") / FApp::GetProjectName() / FApp::GetProjectName() / FString(TEXT("Content/Scripts"));
-	ScriptsPaths.Add(FinalPath);
+		Path.RemoveFromStart(Prefix);
 
-	FString BasePythonPath = FinalPath / FString(TEXT("stdlib.zip")) + FString(":") + FinalPath;
+		// read the file contents and write it if successful to external path
+		TArray<uint8> MemFile;
 
-	if (!UnrealEnginePython_OBBPath.IsEmpty())
-	{
-		BasePythonPath += FString(":") + UnrealEnginePython_OBBPath;
+		const FString SourceFilename = TimestampIt.Key();
+
+		if (FFileHelper::LoadFileToArray(MemFile, *SourceFilename, 0))
+		{
+			FString DestFilename = GExternalFilePath / InDirectory / Path;
+
+			FFileHelper::SaveArrayToFile(MemFile, *DestFilename);
+		}
 	}
 
-	UE_LOG(LogPython, Warning, TEXT("Setting Base Path to %s"), *BasePythonPath);
+	FString PyScriptsSearchPath = GExternalFilePath / InDirectory;
 
-	Py_SetPath(Py_DecodeLocale(TCHAR_TO_UTF8(*BasePythonPath), NULL));
+	ScriptsPaths.Reset();
+
+	ScriptsPaths.Add(PyScriptsSearchPath);
+
+	UE_LOG(LogPython, Warning, TEXT("Setting Android Python Scripts Search Path to %s"), *PyScriptsSearchPath);
+
+	Py_SetPath(Py_DecodeLocale(TCHAR_TO_UTF8(*PyScriptsSearchPath), NULL));
+#elif PLATFORM_IOS
+    FString IOSContentPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*IFileManager::Get().GetFilenameOnDisk(*FPaths::ConvertRelativePathToFull(PROJECT_CONTENT_DIR)));
+    FString PyScriptsSearchPath = IOSContentPath / FString(TEXT("lib")) + FString(":") +
+                                IOSContentPath / FString(TEXT("lib/stdlib.zip")) + FString(":") +
+                                IOSContentPath / FString(TEXT("scripts")); // the name of directory must be lower-case.
+
+    Py_SetPath(Py_DecodeLocale(TCHAR_TO_UTF8(*PyScriptsSearchPath), NULL));
+    
+    UE_LOG(LogPython, Log, TEXT("Setting IOS Python Scripts Search Path to %s"), *PyScriptsSearchPath);
 #endif
 #endif
 
+#if PLATFORM_IOS || PLATFORM_ANDROID
+    Py_NoSiteFlag = 1;
+    Py_NoUserSiteDirectory = 1;
+    
+    Py_InitializeEx(0);
+#else
 	Py_Initialize();
+#endif
 
 #if PLATFORM_WINDOWS
 	// Restore stdio state after Py_Initialize set it to O_BINARY, otherwise
@@ -476,16 +534,22 @@ void FUnrealEnginePythonModule::StartupModule()
 	}
 #endif
 
-	PyEval_InitThreads();
-
 #if WITH_EDITOR
 	StyleSet = MakeShareable(new FSlateStyleSet("UnrealEnginePython"));
 	StyleSet->SetContentRoot(IPluginManager::Get().FindPlugin("UnrealEnginePython")->GetBaseDir() / "Resources");
 	StyleSet->Set("ClassThumbnail.PythonScript", new FSlateImageBrush(StyleSet->RootToContentDir("Icon128.png"), FVector2D(128.0f, 128.0f)));
 	FSlateStyleRegistry::RegisterSlateStyle(*StyleSet.Get());
-#if ENGINE_MINOR_VERSION < 13
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 13))
 	FClassIconFinder::RegisterIconSource(StyleSet.Get());
 #endif
+#endif
+
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 8
+	// We call setlocale here to restore the previous state
+	if (!CurrentLocale.IsEmpty())
+	{
+		setlocale(LC_ALL, TCHAR_TO_ANSI(*CurrentLocale));
+	}
 #endif
 
 	UESetupPythonInterpreter(true);
@@ -493,6 +557,9 @@ void FUnrealEnginePythonModule::StartupModule()
 	main_module = PyImport_AddModule("__main__");
 	main_dict = PyModule_GetDict((PyObject*)main_module);
 	local_dict = main_dict;// PyDict_New();
+
+	PyObject* unreal_engine_dict = PyModule_GetDict(PyImport_AddModule("unreal_engine"));
+	PyDict_SetItemString(unreal_engine_dict, "PLUGIN_DIR", PyUnicode_FromString(TCHAR_TO_UTF8(*PluginBaseDir)));
 
 	setup_stdout_stderr();
 
@@ -655,25 +722,55 @@ void FUnrealEnginePythonModule::RunFile(char *filename)
 		return;
 	}
 
-#if PY_MAJOR_VERSION >= 3
+	bool is_pyc = full_path.EndsWith(TEXT(".pyc"));
+
 	FILE *fd = nullptr;
 
-#if PLATFORM_WINDOWS
-	if (fopen_s(&fd, TCHAR_TO_UTF8(*full_path), "r") != 0)
+	if (is_pyc)
 	{
-		UE_LOG(LogPython, Error, TEXT("Unable to open file %s"), *full_path);
-		return;
+		fopen_s(&fd, TCHAR_TO_UTF8(*full_path), "rb");
 	}
-#else
-	fd = fopen(TCHAR_TO_UTF8(*full_path), "r");
+	else
+	{
+		fopen_s(&fd, TCHAR_TO_UTF8(*full_path), "r");
+	}
+
 	if (!fd)
 	{
 		UE_LOG(LogPython, Error, TEXT("Unable to open file %s"), *full_path);
 		return;
-	}
-#endif
+}
 
-	PyObject *eval_ret = PyRun_File(fd, TCHAR_TO_UTF8(*full_path), Py_file_input, (PyObject *)main_dict, (PyObject *)local_dict);
+	PyObject *eval_ret;
+	if (is_pyc)
+	{
+		long file_magic = PyMarshal_ReadLongFromFile(fd);
+		long magic = PyImport_GetMagicNumber();
+		if (file_magic != magic) {
+			if (!PyErr_Occurred())
+				PyErr_SetString(PyExc_RuntimeError, "Bad magic number in .pyc file"); \
+				goto error;
+		}
+		/* Skip the rest of the header. */
+		(void)PyMarshal_ReadLongFromFile(fd);
+		(void)PyMarshal_ReadLongFromFile(fd);
+		(void)PyMarshal_ReadLongFromFile(fd);
+		if (PyErr_Occurred()) {
+			goto error;
+		}
+		PyObject *v = PyMarshal_ReadLastObjectFromFile(fd);
+		if (v == NULL || !PyCode_Check(v)) {
+			Py_XDECREF(v);
+			PyErr_SetString(PyExc_RuntimeError,
+				"Bad code object in .pyc file");
+			goto error;
+		}
+		eval_ret = PyEval_EvalCode(v, (PyObject *)main_dict, (PyObject *)local_dict);
+	}
+	else
+	{
+		eval_ret = PyRun_File(fd, TCHAR_TO_UTF8(*full_path), Py_file_input, (PyObject *)main_dict, (PyObject *)local_dict);
+	}
 	fclose(fd);
 	if (!eval_ret)
 	{
@@ -682,27 +779,15 @@ void FUnrealEnginePythonModule::RunFile(char *filename)
 			PyErr_Clear();
 			return;
 		}
-		unreal_engine_py_log_error();
-		return;
+		goto error;
 	}
-	Py_DECREF(eval_ret);
-#else
-	// damn, this is horrible, but it is the only way i found to avoid the CRT error :(
-	FString command = FString::Printf(TEXT("execfile(\"%s\")"), *full_path);
-	PyObject *eval_ret = PyRun_String(TCHAR_TO_UTF8(*command), Py_file_input, (PyObject *)main_dict, (PyObject *)local_dict);
-	if (!eval_ret)
-	{
-		if (PyErr_ExceptionMatches(PyExc_SystemExit))
-		{
-			PyErr_Clear();
-			return;
-		}
-		unreal_engine_py_log_error();
-		return;
-	}
-#endif
-
+	Py_XDECREF(eval_ret);
+	return;
+error:
+	fclose(fd);
+	unreal_engine_py_log_error();
 }
+
 
 
 void ue_py_register_magic_module(char *name, PyObject *(*func)())

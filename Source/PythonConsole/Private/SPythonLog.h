@@ -40,7 +40,7 @@ public:
 	SLATE_BEGIN_ARGS(SPythonConsoleInputBox) {}
 
 		/** Called when a console command is executed */
-		SLATE_EVENT( FSimpleDelegate, OnConsoleCommandExecuted )
+	SLATE_EVENT( FSimpleDelegate, OnConsoleCommandExecuted )
 	SLATE_END_ARGS()
 
 	/** Protected console input box widget constructor, called by Slate */

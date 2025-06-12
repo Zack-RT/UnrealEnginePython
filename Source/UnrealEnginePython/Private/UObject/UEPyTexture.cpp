@@ -1,9 +1,9 @@
 #include "UEPyTexture.h"
 
 #include "Runtime/Engine/Public/ImageUtils.h"
-#include "Runtime/Engine/Classes/Engine/Texture.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/Texture2D.h"
+#include "Misc/App.h"
 
 PyObject *py_ue_texture_update_resource(ue_PyUObject *self, PyObject * args)
 {
@@ -44,6 +44,57 @@ PyObject *py_ue_texture_get_height(ue_PyUObject *self, PyObject * args)
 	return PyLong_FromLong(texture->GetSizeY());
 }
 
+
+PyObject* py_ue_texture_get_max_in_game_size(ue_PyUObject* self, PyObject* args)
+{
+	ue_py_check(self);
+
+	UTexture* texture = ue_py_check_type<UTexture>(self);
+	if (!texture)
+		return PyErr_Format(PyExc_Exception, "object is not a Texture");
+	
+	if(!FApp::CanEverRender())
+	{
+		UE_LOG(LogPython, Warning, TEXT("py_ue_texture_get_max_in_game_size: Engine Cannot Ever Render, The Result is invalid."))
+	}
+
+	if(texture->GetResource() && texture->GetResource()->IsProxy())
+	{
+		Py_BEGIN_ALLOW_THREADS;
+		texture->UpdateResource();
+		Py_END_ALLOW_THREADS;
+	}
+	if(!texture->IsAsyncCacheComplete())
+	{
+		texture->FinishCachePlatformData();
+	}
+	
+	const uint32 SurfaceWidth = (uint32)texture->GetSurfaceWidth();
+	const uint32 SurfaceHeight = (uint32)texture->GetSurfaceHeight();
+	const uint32 SurfaceDepth = (uint32)texture->GetSurfaceDepth();
+	int32 MaxResMipBias = 0;
+	UTexture2D* texture2d = Cast<UTexture2D>(texture);
+	if (texture2d) 
+	{
+		MaxResMipBias = texture2d->GetNumMips() - texture2d->GetNumMipsAllowed(true);
+	}
+	else
+	{
+		MaxResMipBias = texture->GetCachedLODBias();
+	}
+
+	const uint32 MaxInGameWidth = FMath::Max<uint32>(SurfaceWidth >> MaxResMipBias, 1);
+	const uint32 MaxInGameHeight = FMath::Max<uint32>(SurfaceHeight >> MaxResMipBias, 1);
+	const uint32 MaxInGameDepth = FMath::Max<uint32>(SurfaceDepth >> MaxResMipBias, 1);
+	
+	PyObject* pyTuple = PyTuple_New(3);
+	PyTuple_SetItem(pyTuple, 0, PyLong_FromUnsignedLong(MaxInGameWidth));
+	PyTuple_SetItem(pyTuple, 1, PyLong_FromUnsignedLong(MaxInGameHeight));
+	PyTuple_SetItem(pyTuple, 2, PyLong_FromUnsignedLong(MaxInGameDepth));
+
+	return pyTuple;
+}
+
 PyObject *py_ue_texture_has_alpha_channel(ue_PyUObject *self, PyObject * args)
 {
 
@@ -56,6 +107,76 @@ PyObject *py_ue_texture_has_alpha_channel(ue_PyUObject *self, PyObject * args)
 	if (texture->HasAlphaChannel())
 		Py_RETURN_TRUE;
 	Py_RETURN_FALSE;
+}
+
+PyObject *py_ue_texture_get_num_mips(ue_PyUObject *self, PyObject * args)
+{
+	ue_py_check(self);
+
+	UTexture2D *texture = ue_py_check_type<UTexture2D>(self);
+	if (!texture)
+		return PyErr_Format(PyExc_Exception, "object is not a Texture");
+	
+	if(!FApp::CanEverRender())
+	{
+		UE_LOG(LogPython, Warning, TEXT("py_ue_texture_get_num_mips: Engine Cannot Ever Render, The Result is invalid."))
+	}
+
+	if(texture->GetResource()->IsProxy())
+	{
+		Py_BEGIN_ALLOW_THREADS;
+		texture->UpdateResource();
+		Py_END_ALLOW_THREADS;
+	}
+	if(!texture->IsAsyncCacheComplete())
+	{
+		texture->FinishCachePlatformData();
+	}
+	
+	const int32 NumMips = texture->GetNumMips();
+	return PyLong_FromLong(NumMips);
+}
+
+PyObject *py_ue_texture_get_platform_size(ue_PyUObject *self, PyObject * args)
+{
+	ue_py_check(self);
+
+	PyObject* py_list = PyList_New(0);
+
+	UTexture2D *texture = ue_py_check_type<UTexture2D>(self);
+	if (!texture)
+		return PyErr_Format(PyExc_Exception, "object is not a Texture");
+	
+	if(!FApp::CanEverRender())
+	{
+		UE_LOG(LogPython, Warning, TEXT("py_ue_texture_get_platform_size: Engine Cannot Ever Render, The Result is invalid."))
+		PyObject* pyTuple = PyTuple_New(3);
+		for (Py_ssize_t i = 0; i < 3; i++) {
+			PyTuple_SetItem(pyTuple, i, PyLong_FromLong(-1));
+		}
+		return pyTuple;
+	}
+	if(texture->GetResource()->IsProxy())
+	{
+		Py_BEGIN_ALLOW_THREADS;
+		texture->UpdateResource();
+		Py_END_ALLOW_THREADS;
+	}
+	if(!texture->IsAsyncCacheComplete())
+	{
+		texture->FinishCachePlatformData();
+	}
+	
+	int32 MaxResMipBias = texture->GetNumMips() - texture->GetNumMipsAllowed(true);
+    uint32 nPlatformSizeX = FMath::Max<uint32>(texture->GetPlatformData()->SizeX >> MaxResMipBias, 1);
+	uint32 nPlatformSizeY = FMath::Max<uint32>(texture->GetPlatformData()->SizeY >> MaxResMipBias, 1);
+	int32 nSourceBytes = (int32)(CalcTextureSize(nPlatformSizeX, nPlatformSizeY, texture->GetPixelFormat(), texture->GetNumMips()) / 1024.0 + 0.5);
+
+	PyList_Append(py_list, PyLong_FromUnsignedLong(nPlatformSizeX));
+	PyList_Append(py_list, PyLong_FromUnsignedLong(nPlatformSizeY));
+	PyList_Append(py_list, PyLong_FromLong(nSourceBytes));
+
+	return py_list;
 }
 
 PyObject *py_ue_texture_get_data(ue_PyUObject *self, PyObject * args)
@@ -73,13 +194,40 @@ PyObject *py_ue_texture_get_data(ue_PyUObject *self, PyObject * args)
 	UTexture2D *tex = ue_py_check_type<UTexture2D>(self);
 	if (!tex)
 		return PyErr_Format(PyExc_Exception, "object is not a Texture2D");
+	
+	if(!FApp::CanEverRender())
+	{
+		UE_LOG(LogPython, Warning, TEXT("py_ue_texture_get_data: Engine Cannot Ever Render, The Result is invalid."))
+		PyObject* pyTuple = PyTuple_New(3);
+		for (Py_ssize_t i = 0; i < 3; i++) {
+			PyTuple_SetItem(pyTuple, i, PyLong_FromLong(-1));
+		}
+		return pyTuple;
+	}
+
+	if(tex->GetResource()->IsProxy())
+	{
+		Py_BEGIN_ALLOW_THREADS;
+		tex->UpdateResource();
+		Py_END_ALLOW_THREADS;
+	}
+	if(!tex->IsAsyncCacheComplete())
+	{
+		tex->FinishCachePlatformData();
+	}
 
 	if (mipmap >= tex->GetNumMips())
 		return PyErr_Format(PyExc_Exception, "invalid mipmap id");
 
+#if ENGINE_MAJOR_VERSION == 5
+	const char *blob = (const char*)tex->GetPlatformData()->Mips[mipmap].BulkData.Lock(LOCK_READ_ONLY);
+	PyObject *bytes = PyByteArray_FromStringAndSize(blob, (Py_ssize_t)tex->GetPlatformData()->Mips[mipmap].BulkData.GetBulkDataSize());
+	tex->GetPlatformData()->Mips[mipmap].BulkData.Unlock();
+#else
 	const char *blob = (const char*)tex->PlatformData->Mips[mipmap].BulkData.Lock(LOCK_READ_ONLY);
 	PyObject *bytes = PyByteArray_FromStringAndSize(blob, (Py_ssize_t)tex->PlatformData->Mips[mipmap].BulkData.GetBulkDataSize());
 	tex->PlatformData->Mips[mipmap].BulkData.Unlock();
+#endif
 	return bytes;
 }
 
@@ -189,7 +337,11 @@ PyObject *py_ue_render_target_get_data(ue_PyUObject *self, PyObject * args)
 		return PyErr_Format(PyExc_Exception, "object is not a TextureRenderTarget");
 
 
+#if ENGINE_MAJOR_VERSION == 5
+	FTextureRenderTarget2DResource *resource = (FTextureRenderTarget2DResource *)tex->GetResource();
+#else
 	FTextureRenderTarget2DResource *resource = (FTextureRenderTarget2DResource *)tex->Resource;
+#endif
 	if (!resource)
 	{
 		return PyErr_Format(PyExc_Exception, "cannot get render target resource");
@@ -230,7 +382,11 @@ PyObject *py_ue_render_target_get_data_to_buffer(ue_PyUObject *self, PyObject * 
 		return PyErr_Format(PyExc_Exception, "object is not a TextureRenderTarget");
 	}
 
+#if ENGINE_MAJOR_VERSION == 5
+	FTextureRenderTarget2DResource *resource = (FTextureRenderTarget2DResource *)tex->GetResource();
+#else
 	FTextureRenderTarget2DResource *resource = (FTextureRenderTarget2DResource *)tex->Resource;
+#endif
 	if (!resource)
 	{
 		PyBuffer_Release(&py_buf);
@@ -275,8 +431,23 @@ PyObject *py_ue_texture_set_data(ue_PyUObject *self, PyObject * args)
 		PyBuffer_Release(&py_buf);
 		return PyErr_Format(PyExc_Exception, "object is not a Texture2D");
 	}
-
-
+	
+	if(!FApp::CanEverRender())
+	{
+		UE_LOG(LogPython, Warning, TEXT("py_ue_texture_set_data: Engine Cannot Ever Render, The Result is invalid."))
+	}
+	
+	if(tex->GetResource()->IsProxy())
+	{
+		Py_BEGIN_ALLOW_THREADS;
+		tex->UpdateResource();
+		Py_END_ALLOW_THREADS;
+	}
+	if(!tex->IsAsyncCacheComplete())
+	{
+		tex->FinishCachePlatformData();
+	}
+	
 	if (!py_buf.buf)
 	{
 		PyBuffer_Release(&py_buf);
@@ -289,8 +460,13 @@ PyObject *py_ue_texture_set_data(ue_PyUObject *self, PyObject * args)
 		return PyErr_Format(PyExc_Exception, "invalid mipmap id");
 	}
 
+#if ENGINE_MAJOR_VERSION == 5
+	char *blob = (char*)tex->GetPlatformData()->Mips[mipmap].BulkData.Lock(LOCK_READ_WRITE);
+	int32 len = tex->GetPlatformData()->Mips[mipmap].BulkData.GetBulkDataSize();
+#else
 	char *blob = (char*)tex->PlatformData->Mips[mipmap].BulkData.Lock(LOCK_READ_WRITE);
 	int32 len = tex->PlatformData->Mips[mipmap].BulkData.GetBulkDataSize();
+#endif
 	int32 wanted_len = py_buf.len;
 	// avoid making mess
 	if (wanted_len > len)
@@ -302,7 +478,11 @@ PyObject *py_ue_texture_set_data(ue_PyUObject *self, PyObject * args)
 
 	PyBuffer_Release(&py_buf);
 
+#if ENGINE_MAJOR_VERSION == 5
+	tex->GetPlatformData()->Mips[mipmap].BulkData.Unlock();
+#else
 	tex->PlatformData->Mips[mipmap].BulkData.Unlock();
+#endif
 
 	Py_BEGIN_ALLOW_THREADS;
 	tex->MarkPackageDirty();
@@ -344,7 +524,7 @@ PyObject *py_unreal_engine_compress_image_array(PyObject * self, PyObject * args
 	TArray<uint8> output;
 
 	Py_BEGIN_ALLOW_THREADS;
-	FImageUtils::CompressImageArray(width, height, colors, output);
+	FImageUtils::ThumbnailCompressImageArray(width, height, colors, output);
 	Py_END_ALLOW_THREADS;
 
 	return PyBytes_FromStringAndSize((char *)output.GetData(), output.Num());
@@ -469,3 +649,22 @@ PyObject *py_unreal_engine_create_texture(PyObject * self, PyObject * args)
 }
 #endif
 
+PyObject *py_ue_texture_get_pixel_format(ue_PyUObject *self, PyObject * args)
+{
+
+	ue_py_check(self);
+	
+	UTexture2D *tex = ue_py_check_type<UTexture2D>(self);
+	if (!tex)
+		return PyErr_Format(PyExc_Exception, "object is not a Texture2D");
+
+	if(!FApp::CanEverRender())
+	{
+		UE_LOG(LogPython, Warning, TEXT("py_ue_texture_get_pixel_format: Engine Cannot Ever Render, The Result is invalid."))
+	}
+	
+	tex->FinishCachePlatformData();
+	const EPixelFormat PF = tex->GetPlatformData()->PixelFormat;
+	
+	return PyLong_FromUnsignedLong(PF);
+}

@@ -33,9 +33,13 @@ public:
 	    output log DLL is unloaded on the fly. */
 	virtual TSharedRef< SWidget > MakeConsoleInputBox( TSharedPtr< SEditableTextBox >& OutExposedEditableTextBox ) const;
 
-
 private:
-
+	
+	void RegisterMenus();
+	void UnRegisterMenus();
+	
+	void RunResourceCheckScript();
+	void RunResourceFixScript();
 	/** Weak pointer to a debug console that's currently open, if any */
 	TWeakPtr< SWidget > PythonConsole;
 };

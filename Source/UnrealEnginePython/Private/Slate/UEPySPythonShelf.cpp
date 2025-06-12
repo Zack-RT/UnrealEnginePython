@@ -1,7 +1,7 @@
 #include "UEPySPythonShelf.h"
 #if WITH_EDITOR
 
-#if ENGINE_MINOR_VERSION > 14
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 14)
 
 
 
@@ -123,8 +123,9 @@ static int ue_py_spython_shelf_init(ue_PySPythonShelf *self, PyObject *args, PyO
 		{
 			if (PyUnicodeOrString_Check(item))
 			{
-				FName class_name = FName(UTF8_TO_TCHAR(UEPyUnicode_AsUTF8(item)));
-				asset_picker_config.Filter.ClassNames.Add(class_name);
+				asset_picker_config.Filter.ClassPaths.Add(FTopLevelAssetPath(
+					FString::Printf(TEXT("/Script/Engine.%s"), UTF8_TO_TCHAR(UEPyUnicode_AsUTF8(item)))
+				));
 			}
 		}
 		Py_DECREF(py_classes_iterable);

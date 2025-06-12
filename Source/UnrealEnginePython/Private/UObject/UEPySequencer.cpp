@@ -8,16 +8,22 @@
 #include "Runtime/LevelSequence/Public/LevelSequence.h"
 
 #if WITH_EDITOR
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 24)
+#include "Subsystems/AssetEditorSubsystem.h"
+#endif
 #include "Editor/Sequencer/Public/ISequencer.h"
 #include "Editor/Sequencer/Public/ISequencerModule.h"
+#if ENGINE_MAJOR_VERSION == 5
+#else
 #include "Editor/UnrealEd/Public/Toolkits/AssetEditorManager.h"
-#if ENGINE_MINOR_VERSION >= 20
-#include "LevelSequenceEditor/Private/LevelSequenceEditorToolkit.h"
+#endif
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20)
+#include "ILevelSequenceEditorToolkit.h"
 #else
 #include "Private/LevelSequenceEditorToolkit.h"
 #endif
 #include "Tracks/MovieSceneCameraCutTrack.h"
-#if ENGINE_MINOR_VERSION < 20
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 #include "Sections/IKeyframeSection.h"
 #endif
 #include "Sections/MovieSceneFloatSection.h"
@@ -27,24 +33,26 @@
 #include "Runtime/MovieScene/Public/MovieSceneFolder.h"
 #include "Runtime/MovieScene/Public/MovieSceneSpawnable.h"
 #include "Runtime/MovieScene/Public/MovieScenePossessable.h"
-#if ENGINE_MINOR_VERSION < 18
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 18))
 #include "Editor/UnrealEd/Private/FbxImporter.h"
 #else
 #include "Editor/UnrealEd/Public/FbxImporter.h"
 #endif
+#if !(ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
 #include "Editor/MovieSceneTools/Public/MatineeImportTools.h"
+#endif
 #endif
 
 #include "GameFramework/Actor.h"
 #include "Runtime/LevelSequence/Public/LevelSequence.h"
 #include "Engine/World.h"
 
-#if ENGINE_MINOR_VERSION >= 20
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20)
 #include "Wrappers/UEPyFFrameNumber.h"
 #endif
 
 
-#if ENGINE_MINOR_VERSION >= 20
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20)
 static bool magic_get_frame_number(UMovieScene *MovieScene, PyObject *py_obj, FFrameNumber *dest)
 {
 	ue_PyFFrameNumber *py_frame_number = py_ue_is_fframe_number(py_obj);
@@ -68,7 +76,7 @@ static bool magic_get_frame_number(UMovieScene *MovieScene, PyObject *py_obj, FF
 }
 
 #if WITH_EDITOR
-#if ENGINE_MINOR_VERSION > 21
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 21)
 static void ImportTransformChannel(const FRichCurve& Source, FMovieSceneFloatChannel* Dest, FFrameRate DestFrameRate, bool bNegateTangents)
 {
 	TMovieSceneChannelData<FMovieSceneFloatValue> ChannelData = Dest->GetData();
@@ -139,7 +147,7 @@ static void ImportTransformChannel(const FInterpCurveFloat& Source, FMovieSceneF
 		}
 
 		FFrameNumber KeyTime = (Source.Points[KeyIndex].InVal * DestFrameRate).RoundToFrame();
-#if ENGINE_MINOR_VERSION > 20
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 20)
 		FMatineeImportTools::SetOrAddKey(ChannelData, KeyTime, Source.Points[KeyIndex].OutVal, ArriveTangent, LeaveTangent, Source.Points[KeyIndex].InterpMode, DestFrameRate);
 #else
 		FMatineeImportTools::SetOrAddKey(ChannelData, KeyTime, Source.Points[KeyIndex].OutVal, ArriveTangent, LeaveTangent, Source.Points[KeyIndex].InterpMode);
@@ -157,7 +165,7 @@ static bool ImportFBXTransform(FString NodeName, UMovieScene3DTransformSection* 
 	// Look for transforms explicitly
 	FTransform DefaultTransform;
 
-#if ENGINE_MINOR_VERSION > 21
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 21)
 	FRichCurve Translation[3];
 	FRichCurve EulerRotation[3];
 	FRichCurve Scale[3];
@@ -166,7 +174,11 @@ static bool ImportFBXTransform(FString NodeName, UMovieScene3DTransformSection* 
 	FInterpCurveFloat EulerRotation[3];
 	FInterpCurveFloat Scale[3];
 #endif
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 21)
+	CurveAPI.GetConvertedTransformCurveData(NodeName, Translation[0], Translation[1], Translation[2], EulerRotation[0], EulerRotation[1], EulerRotation[2], Scale[0], Scale[1], Scale[2], DefaultTransform, false);
+#else
 	CurveAPI.GetConvertedTransformCurveData(NodeName, Translation[0], Translation[1], Translation[2], EulerRotation[0], EulerRotation[1], EulerRotation[2], Scale[0], Scale[1], Scale[2], DefaultTransform);
+#endif
 
 
 	TransformSection->Modify();
@@ -209,9 +221,9 @@ static bool ImportFBXTransform(FString NodeName, UMovieScene3DTransformSection* 
 #endif
 
 #if WITH_EDITOR
+
 PyObject *py_ue_sequencer_changed(ue_PyUObject *self, PyObject * args)
 {
-
 	ue_py_check(self);
 
 	PyObject *py_bool = nullptr;
@@ -227,21 +239,31 @@ PyObject *py_ue_sequencer_changed(ue_PyUObject *self, PyObject * args)
 
 	ULevelSequence *seq = (ULevelSequence *)self->ue_object;
 
+	//UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+
 	if (py_bool && PyObject_IsTrue(py_bool))
 	{
 		// try to open the editor for the asset
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 24)
+		GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(seq);
+#else
 		FAssetEditorManager::Get().OpenEditorForAsset(seq);
+#endif
 	}
 
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 24)
+	IAssetEditorInstance* editor = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->FindEditorForAsset(seq, true);
+#else
 	IAssetEditorInstance *editor = FAssetEditorManager::Get().FindEditorForAsset(seq, true);
+#endif
 	if (editor)
 	{
-		FLevelSequenceEditorToolkit *toolkit = (FLevelSequenceEditorToolkit *)editor;
+		ILevelSequenceEditorToolkit *toolkit = (ILevelSequenceEditorToolkit *)editor;
 		ISequencer *sequencer = toolkit->GetSequencer().Get();
-#if ENGINE_MINOR_VERSION < 13
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 13))
 		sequencer->NotifyMovieSceneDataChanged();
 #else
-#if ENGINE_MINOR_VERSION > 16
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 16)
 		sequencer->NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::RefreshAllImmediately);
 #else
 		sequencer->NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::Unknown);
@@ -346,7 +368,7 @@ PyObject *py_ue_sequencer_find_possessable(ue_PyUObject *self, PyObject * args)
 		return PyErr_Format(PyExc_Exception, "invalid GUID");
 	}
 
-#if ENGINE_MINOR_VERSION < 15
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 15))
 	UObject *u_obj = seq->FindPossessableObject(f_guid, seq);
 #else
 	UObject *parent = nullptr;
@@ -464,12 +486,20 @@ PyObject *py_ue_sequencer_add_actor(ue_PyUObject *self, PyObject * args)
 	actors.Add((AActor *)py_ue_obj->ue_object);
 
 	// try to open the editor for the asset
+
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 24)
+	//UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+	GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(seq);
+
+	IAssetEditorInstance *editor = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->FindEditorForAsset(seq, true);
+#else
 	FAssetEditorManager::Get().OpenEditorForAsset(seq);
 
 	IAssetEditorInstance *editor = FAssetEditorManager::Get().FindEditorForAsset(seq, true);
+#endif
 	if (editor)
 	{
-		FLevelSequenceEditorToolkit *toolkit = (FLevelSequenceEditorToolkit *)editor;
+		ILevelSequenceEditorToolkit *toolkit = (ILevelSequenceEditorToolkit *)editor;
 		ISequencer *sequencer = toolkit->GetSequencer().Get();
 		sequencer->AddActors(actors);
 	}
@@ -480,7 +510,7 @@ PyObject *py_ue_sequencer_add_actor(ue_PyUObject *self, PyObject * args)
 
 	UObject& u_obj = *actors[0];
 
-#if ENGINE_MINOR_VERSION < 15
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 15))
 	FGuid new_guid = seq->FindPossessableObjectId(u_obj);
 #else
 	FGuid new_guid = seq->FindPossessableObjectId(u_obj, u_obj.GetWorld());
@@ -519,13 +549,21 @@ PyObject *py_ue_sequencer_add_actor_component(ue_PyUObject *self, PyObject * arg
 	UActorComponent* actorComponent = (UActorComponent *)py_ue_obj->ue_object;
 
 	// try to open the editor for the asset
+
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 24)
+	UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+	AssetEditorSubsystem->OpenEditorForAsset(seq);
+
+	IAssetEditorInstance *editor = AssetEditorSubsystem->FindEditorForAsset(seq, true);
+#else
 	FAssetEditorManager::Get().OpenEditorForAsset(seq);
 
 	IAssetEditorInstance *editor = FAssetEditorManager::Get().FindEditorForAsset(seq, true);
+#endif
 	FGuid new_guid;
 	if (editor)
 	{
-		FLevelSequenceEditorToolkit *toolkit = (FLevelSequenceEditorToolkit *)editor;
+		ILevelSequenceEditorToolkit *toolkit = (ILevelSequenceEditorToolkit *)editor;
 		ISequencer *sequencer = toolkit->GetSequencer().Get();
 		new_guid = sequencer->GetHandleToObject(actorComponent);
 	}
@@ -568,15 +606,23 @@ PyObject *py_ue_sequencer_make_new_spawnable(ue_PyUObject *self, PyObject * args
 	ULevelSequence *seq = (ULevelSequence *)self->ue_object;
 
 	// try to open the editor for the asset
+
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 24)
+	//UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+	GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(seq);
+
+	IAssetEditorInstance *editor = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->FindEditorForAsset(seq, true);
+#else
 	FAssetEditorManager::Get().OpenEditorForAsset(seq);
 
 	IAssetEditorInstance *editor = FAssetEditorManager::Get().FindEditorForAsset(seq, true);
+#endif
 	if (!editor)
 	{
 		return PyErr_Format(PyExc_Exception, "unable to access sequencer");
 	}
 
-	FLevelSequenceEditorToolkit *toolkit = (FLevelSequenceEditorToolkit *)editor;
+	ILevelSequenceEditorToolkit *toolkit = (ILevelSequenceEditorToolkit *)editor;
 	ISequencer *sequencer = toolkit->GetSequencer().Get();
 	FGuid new_guid = sequencer->MakeNewSpawnable(*actor);
 
@@ -596,8 +642,12 @@ PyObject *py_ue_sequencer_master_tracks(ue_PyUObject *self, PyObject * args)
 	UMovieScene	*scene = seq->GetMovieScene();
 
 	PyObject *py_tracks = PyList_New(0);
-
+	
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 2)
+	TArray<UMovieSceneTrack *> tracks = scene->GetTracks();
+#else
 	TArray<UMovieSceneTrack *> tracks = scene->GetMasterTracks();
+#endif
 
 	for (UMovieSceneTrack *track : tracks)
 	{
@@ -780,7 +830,11 @@ PyObject *py_ue_sequencer_create_folder(ue_PyUObject *self, PyObject * args)
 	else
 	{
 		scene->Modify();
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 1)
+		scene->AddRootFolder(new_folder);
+#else
 		scene->GetRootFolders().Add(new_folder);
+#endif
 	}
 
 	Py_RETURN_UOBJECT(new_folder);
@@ -917,7 +971,12 @@ PyObject *py_ue_sequencer_add_master_track(ue_PyUObject *self, PyObject * args)
 	if (!u_class->IsChildOf<UMovieSceneTrack>())
 		return PyErr_Format(PyExc_Exception, "uobject is not a UMovieSceneTrack class");
 
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 2)
+	UMovieSceneTrack *track = scene->AddTrack(u_class);
+#else
 	UMovieSceneTrack *track = scene->AddMasterTrack(u_class);
+#endif
+	
 	if (!track)
 		return PyErr_Format(PyExc_Exception, "unable to create new master track");
 
@@ -936,7 +995,7 @@ PyObject *py_ue_sequencer_set_playback_range(ue_PyUObject *self, PyObject * args
 		return PyErr_Format(PyExc_Exception, "uobject is not a LevelSequence");
 	UMovieScene	*scene = seq->GetMovieScene();
 
-#if ENGINE_MINOR_VERSION < 20
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 	float start_time;
 	float end_time;
 	if (!PyArg_ParseTuple(args, "ff:sequencer_set_playback_range", &start_time, &end_time))
@@ -979,7 +1038,7 @@ PyObject *py_ue_sequencer_get_playback_range(ue_PyUObject *self, PyObject * args
 		return PyErr_Format(PyExc_Exception, "uobject is not a LevelSequence");
 	UMovieScene	*scene = seq->GetMovieScene();
 
-#if ENGINE_MINOR_VERSION < 20
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 	TRange<float> range = scene->GetPlaybackRange();
 	return Py_BuildValue("(ff)", range.GetLowerBoundValue(), range.GetUpperBoundValue());
 #else
@@ -1043,7 +1102,7 @@ PyObject *py_ue_sequencer_set_section_range(ue_PyUObject *self, PyObject * args)
 	if (!section)
 		return PyErr_Format(PyExc_Exception, "uobject is not a MovieSceneSection");
 
-#if ENGINE_MINOR_VERSION < 20
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 	float start_time;
 	float end_time;
 	if (!PyArg_ParseTuple(args, "ff:sequencer_set_section_range", &start_time, &end_time))
@@ -1051,7 +1110,7 @@ PyObject *py_ue_sequencer_set_section_range(ue_PyUObject *self, PyObject * args)
 		return nullptr;
 	}
 
-#if ENGINE_MINOR_VERSION > 17
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 17)
 	section->SetRange(TRange<float>::Inclusive(start_time, end_time));
 #else
 	section->SetRange(TRange<float>(TRangeBound<float>::Inclusive(start_time), TRangeBound<float>::Inclusive(end_time)));
@@ -1098,7 +1157,7 @@ PyObject *py_ue_sequencer_get_selection_range(ue_PyUObject *self, PyObject * arg
 		return PyErr_Format(PyExc_Exception, "uobject is not a LevelSequence");
 	UMovieScene	*scene = seq->GetMovieScene();
 
-#if ENGINE_MINOR_VERSION < 20
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 	TRange<float> range = scene->GetSelectionRange();
 	return Py_BuildValue("(ff)", range.GetLowerBoundValue(), range.GetUpperBoundValue());
 #else
@@ -1129,7 +1188,7 @@ PyObject *py_ue_sequencer_section_add_key(ue_PyUObject *self, PyObject * args)
 	if (!section)
 		return PyErr_Format(PyExc_Exception, "uobject is not a MovieSceneSection");
 
-#if ENGINE_MINOR_VERSION >= 20
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20)
 	UMovieSceneTrack *Track = section->GetTypedOuter<UMovieSceneTrack>();
 	if (!Track)
 		return PyErr_Format(PyExc_Exception, "unable to retrieve track from section");
@@ -1150,7 +1209,7 @@ PyObject *py_ue_sequencer_section_add_key(ue_PyUObject *self, PyObject * args)
 			PyObject *f_value = PyNumber_Float(py_value);
 			float value = PyFloat_AsDouble(f_value);
 			Py_DECREF(f_value);
-#if ENGINE_MINOR_VERSION < 20
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 			section_float->AddKey(time, value, (EMovieSceneKeyInterpolation)interpolation);
 #else
 			FMovieSceneFloatChannel& Channel = (FMovieSceneFloatChannel&)section_float->GetChannel();
@@ -1176,7 +1235,6 @@ PyObject *py_ue_sequencer_section_add_key(ue_PyUObject *self, PyObject * args)
 			}
 			return PyLong_FromLong(RetValue);
 #endif
-			Py_RETURN_NONE;
 		}
 	}
 
@@ -1187,14 +1245,13 @@ PyObject *py_ue_sequencer_section_add_key(ue_PyUObject *self, PyObject * args)
 			bool value = false;
 			if (PyObject_IsTrue(py_value))
 				value = true;
-#if ENGINE_MINOR_VERSION < 20
-			section_bool->AddKey(time, value, (EMovieSceneKeyInterpolation)interpolation);
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
+			int32 RetValue = section_bool->AddKey(time, value, (EMovieSceneKeyInterpolation)interpolation);
 #else
 			FMovieSceneBoolChannel& Channel = section_bool->GetChannel();
 			int32 RetValue = Channel.GetData().AddKey(FrameNumber, value);
-			return PyLong_FromLong(RetValue);
 #endif
-			Py_RETURN_NONE;
+			return PyLong_FromLong(RetValue);
 		}
 	}
 
@@ -1205,7 +1262,7 @@ PyObject *py_ue_sequencer_section_add_key(ue_PyUObject *self, PyObject * args)
 			bool unwind = (py_unwind && PyObject_IsTrue(py_unwind));
 			FTransform transform = py_transform->transform;
 
-#if ENGINE_MINOR_VERSION < 20
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 			FTransformKey tx = FTransformKey(EKey3DTransformChannel::Translation, EAxis::X, transform.GetLocation().X, unwind);
 			FTransformKey ty = FTransformKey(EKey3DTransformChannel::Translation, EAxis::Y, transform.GetLocation().Y, unwind);
 			FTransformKey tz = FTransformKey(EKey3DTransformChannel::Translation, EAxis::Z, transform.GetLocation().Z, unwind);
@@ -1306,12 +1363,16 @@ PyObject *py_ue_sequencer_section_add_key(ue_PyUObject *self, PyObject * args)
 		}
 	}
 
+#if ENGINE_MAJOR_VERSION == 5
+	else if (auto section_vector = Cast<UMovieSceneFloatVectorSection>(section))
+#else
 	else if (auto section_vector = Cast<UMovieSceneVectorSection>(section))
+#endif
 	{
 		if (ue_PyFVector *py_vector = py_ue_is_fvector(py_value))
 		{
 			FVector vec = py_vector->vec;
-#if ENGINE_MINOR_VERSION < 20
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 			FVectorKey vx = FVectorKey(EKeyVectorChannel::X, vec.X);
 			FVectorKey vy = FVectorKey(EKeyVectorChannel::Y, vec.Y);
 			FVectorKey vz = FVectorKey(EKeyVectorChannel::Z, vec.Z);
@@ -1358,8 +1419,6 @@ PyObject *py_ue_sequencer_section_add_key(ue_PyUObject *self, PyObject * args)
 			}
 			return Py_BuildValue("(iii)", RetValueVX, RetValueVY, RetValueVZ);
 #endif
-
-			Py_RETURN_NONE;
 }
 	}
 
@@ -1474,8 +1533,12 @@ PyObject *py_ue_sequencer_remove_master_track(ue_PyUObject *self, PyObject * arg
 		return PyErr_Format(PyExc_Exception, "argument is not a UMovieSceneTrack");
 
 	UMovieScene	*scene = seq->GetMovieScene();
-
+	
+#if (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 2)
+	if (scene->RemoveTrack(*track))
+#else
 	if (scene->RemoveMasterTrack(*track))
+#endif
 		Py_RETURN_TRUE;
 
 	Py_RETURN_FALSE;
@@ -1636,7 +1699,7 @@ PyObject *py_ue_sequencer_import_fbx_transform(ue_PyUObject *self, PyObject * ar
 	FbxImporter->PopulateAnimatedCurveData(CurveAPI);
 
 	TArray<FString> AllNodeNames;
-#if ENGINE_MINOR_VERSION < 18
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 18))
 	CurveAPI.GetAnimatedNodeNameArray(AllNodeNames);
 #else
 	CurveAPI.GetAllNodeNameArray(AllNodeNames);
@@ -1648,7 +1711,7 @@ PyObject *py_ue_sequencer_import_fbx_transform(ue_PyUObject *self, PyObject * ar
 			continue;
 
 		// Look for transforms explicitly
-#if ENGINE_MINOR_VERSION > 21
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION > 21)
 		FRichCurve Translation[3];
 		FRichCurve EulerRotation[3];
 		FRichCurve Scale[3];
@@ -1658,9 +1721,13 @@ PyObject *py_ue_sequencer_import_fbx_transform(ue_PyUObject *self, PyObject * ar
 		FInterpCurveFloat Scale[3];
 #endif
 		FTransform DefaultTransform;
-#if ENGINE_MINOR_VERSION >= 18
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 18)
+#if ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 21)
+		CurveAPI.GetConvertedTransformCurveData(NodeName, Translation[0], Translation[1], Translation[2], EulerRotation[0], EulerRotation[1], EulerRotation[2], Scale[0], Scale[1], Scale[2], DefaultTransform, false);
+#else
 		CurveAPI.GetConvertedTransformCurveData(NodeName, Translation[0], Translation[1], Translation[2], EulerRotation[0], EulerRotation[1], EulerRotation[2], Scale[0], Scale[1], Scale[2], DefaultTransform);
-#if ENGINE_MINOR_VERSION < 20
+#endif
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 		for (int32 ChannelIndex = 0; ChannelIndex < 3; ++ChannelIndex)
 		{
 			EAxis::Type ChannelAxis = EAxis::X;
@@ -1683,7 +1750,7 @@ PyObject *py_ue_sequencer_import_fbx_transform(ue_PyUObject *self, PyObject * ar
 		CurveAPI.GetConvertedTransformCurveData(NodeName, Translation[0], Translation[1], Translation[2], EulerRotation[0], EulerRotation[1], EulerRotation[2], Scale[0], Scale[1], Scale[2]);
 
 #endif
-#if ENGINE_MINOR_VERSION < 20
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 		float MinTime = FLT_MAX;
 		float MaxTime = -FLT_MAX;
 
@@ -1771,7 +1838,7 @@ PyObject *py_ue_sequencer_import_fbx_transform(ue_PyUObject *self, PyObject * ar
 		ImportFBXTransform(nodename, section, CurveAPI);
 #endif
 
-#if ENGINE_MINOR_VERSION < 20
+#if !(ENGINE_MAJOR_VERSION == 5 || (ENGINE_MAJOR_VERSION == 4 && ENGINE_MINOR_VERSION >= 20))
 		section->SetStartTime(MinTime);
 		section->SetEndTime(MaxTime);
 #endif

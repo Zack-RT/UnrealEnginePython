@@ -26,6 +26,7 @@ class FPythonSmartHttpDelegate : public FPythonSmartDelegate
 public:
 	void OnRequestComplete(FHttpRequestPtr request, FHttpResponsePtr response, bool successful);
 	void OnRequestProgress(FHttpRequestPtr request, int32 sent, int32 received);
+	void OnRequestProgress64(FHttpRequestPtr request, uint64 sent, uint64 received);
 
 	void SetPyHttpRequest(ue_PyIHttpRequest *request)
 	{
