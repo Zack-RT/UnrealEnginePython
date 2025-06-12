@@ -10,6 +10,13 @@ Funny snippets for working with StaticMesh and SkeletalMesh assets: https://gith
 
 More tutorials: https://github.com/20tab/UnrealEnginePython/tree/master/tutorials
 
+# Project Status (UPDATE IN June 2025)
+
+The original author has stopped maintaining this repository, but my project has created many tools based on UEP, and I am constantly maintaining it..
+
+Due to limited energy, only the functions under Windows Editor were adapted, and many APIs were added on the basis of the original functions, focusing on obtaining various UOarget properties. Friends who are interested in this can continue to maintain it together.
+
+
 # Project Status (IMPORTANT)
 
 Currently (as april 2020) the project is on hold: between 2016 and 2018 20tab invested lot of resources in it but unfortunately epic (during 2018) decided to suddenly release its own implementation and the request made for a megagrant in 2019 by the original plugin author was rejected too.
